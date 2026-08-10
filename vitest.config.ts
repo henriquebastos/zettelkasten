@@ -7,7 +7,8 @@ export default defineConfig({
       wrangler: { configPath: './wrangler.jsonc' },
       miniflare: {
         bindings: {
-          ALLOCATOR_TOKEN: 'test-token',
+          SERVICE_ADMIN_TOKEN: 'test-admin-token',
+          CAPABILITY_SIGNING_KEY: 'test-signing-key-with-at-least-32-bytes',
         },
       },
     }),

@@ -6,13 +6,13 @@
   "durable_objects": {
     "bindings": [
       {
-        "name": "ALLOCATIONS",
-        "class_name": "AllocationLedger"
+        "name": "HIERARCHIES",
+        "class_name": "Hierarchy"
       }
     ]
   },
   "exports": {
-    "AllocationLedger": {
+    "Hierarchy": {
       "type": "durable-object",
       "storage": "sqlite"
     }
