@@ -55,9 +55,12 @@ POST /v1/admin/namespaces/{namespaceID}/imports
 POST /v1/admin/namespaces/{namespaceID}/activate
 POST /v1/admin/namespaces/{namespaceID}/token:rotate
 POST /v1/admin/namespaces/{namespaceID}/disable
+POST /v1/admin/recovery/objects/{durableObjectID}/token:rotate
 ```
 
 New namespaces start in `initializing`. Existing hierarchies can be imported parent-first with explicit ordinals and expected addresses. Import batches are transactional. Activation closes the import path and enables normal allocation; disablement is terminal in v1.
+
+The recovery operation is service-admin-only. It retrieves non-secret namespace metadata from a known Cloudflare Durable Object ID and rotates a lost namespace capability without creating another namespace.
 
 ## Development
 

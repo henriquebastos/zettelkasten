@@ -1,4 +1,4 @@
-import { exports } from 'cloudflare:workers'
+import { env, exports } from 'cloudflare:workers'
 import { describe, expect, it } from 'vitest'
 
 const ADMIN_TOKEN = 'test-admin-token'
@@ -6,6 +6,9 @@ const worker = exports as unknown as {
   default: {
     fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>
   }
+}
+const bindings = env as unknown as {
+  HIERARCHIES: DurableObjectNamespace
 }
 
 interface Namespace {
@@ -34,6 +37,30 @@ describe('namespaced hierarchy service', () => {
 
     expect(response.status).toBe(409)
     expect(await response.json()).toMatchObject({ code: 'namespace_initializing' })
+  })
+
+  it('recovers namespace metadata and rotates a lost capability by Durable Object ID', async () => {
+    const namespace = await createNamespace('recovery')
+    const objectID = bindings.HIERARCHIES
+      .idFromName(`namespace-v1:${namespace.namespaceID}`)
+      .toString()
+
+    const recovered = await admin(
+      `/v1/admin/recovery/objects/${objectID}/token:rotate`,
+      {},
+    )
+    expect(recovered.status).toBe(200)
+    const body = await recovered.json() as Namespace & { name: string; state: string }
+    expect(body).toMatchObject({
+      namespaceID: namespace.namespaceID,
+      name: 'recovery',
+      state: 'initializing',
+    })
+    expect(body.capabilityToken).not.toBe(namespace.capabilityToken)
+
+    await activate(body)
+    expect((await createElement(namespace, 'old-token', null)).status).toBe(401)
+    expect((await createElement(body, 'new-token', null)).status).toBe(201)
   })
 
   it('allocates and renders a hierarchy from opaque cross-system keys', async () => {

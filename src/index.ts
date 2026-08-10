@@ -45,6 +45,12 @@ interface ElementRecord extends ElementInput {
   address: string
 }
 
+interface NamespaceMetadata {
+  namespaceID: string
+  name: string
+  state: NamespaceState
+}
+
 type OperationResult<T> =
   | { ok: true; created?: boolean; value: T }
   | { ok: false; status: number; code: string; detail?: unknown }
@@ -142,6 +148,19 @@ export class Hierarchy extends DurableObject<Env> {
       )
       return { ok: true, value: meta.state }
     })
+  }
+
+  adminMetadata(): OperationResult<NamespaceMetadata> {
+    const meta = this.meta()
+    if (!meta) return failure(404, 'namespace_not_found')
+    return {
+      ok: true,
+      value: {
+        namespaceID: meta.namespace_id,
+        name: meta.name,
+        state: meta.state,
+      },
+    }
   }
 
   importElements(elements: ImportedElement[]): OperationResult<{ imported: number }> {
@@ -334,6 +353,21 @@ async function route(request: Request, env: Env): Promise<Response> {
     const result = await hierarchy(env, namespaceID).initialize(namespaceID, name, tokenDigest)
     if (!result.ok) return resultResponse(result)
     return json({ namespaceID, name, state: result.value, capabilityToken }, 201)
+  }
+
+  const recoveryMatch = url.pathname.match(
+    /^\/v1\/admin\/recovery\/objects\/([0-9a-f]{64})\/token:rotate$/,
+  )
+  if (recoveryMatch) {
+    if (!isAdmin(request, env)) return json({ code: 'unauthorized' }, 401)
+    const target = env.HIERARCHIES.get(env.HIERARCHIES.idFromString(recoveryMatch[1]))
+    const metadata = await target.adminMetadata()
+    if (!metadata.ok) return resultResponse(metadata)
+
+    const capabilityToken = await createCapability(metadata.value.namespaceID, env)
+    const rotated = await target.rotateToken(await digest(capabilityToken))
+    if (!rotated.ok) return resultResponse(rotated)
+    return json({ ...metadata.value, state: rotated.value, capabilityToken })
   }
 
   const adminMatch = url.pathname.match(
