@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "zettelkasten-allocator",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-08",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ALLOCATIONS",
+        "class_name": "AllocationLedger"
+      }
+    ]
+  },
+  "exports": {
+    "AllocationLedger": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  },
+  "observability": {
+    "enabled": true
+  }
+}

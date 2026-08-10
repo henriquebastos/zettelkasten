@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-printf '%s\n' 'No project dependencies require setup.'
+printf '%s\n' 'Installing locked project dependencies...'
+bun install --frozen-lockfile

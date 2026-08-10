@@ -1,0 +1,21 @@
+{
+  "name": "zettelkasten-allocator",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "bun run typecheck && bun run test",
+    "deploy": "node_modules/node/bin/node node_modules/wrangler/bin/wrangler.js deploy",
+    "dev": "node_modules/node/bin/node node_modules/wrangler/bin/wrangler.js dev",
+    "test": "node_modules/node/bin/node node_modules/vitest/vitest.mjs run",
+    "typecheck": "node_modules/node/bin/node node_modules/typescript/bin/tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "latest",
+    "@cloudflare/workers-types": "latest",
+    "@types/node": "latest",
+    "node": "22.18.0",
+    "typescript": "5.9.3",
+    "vitest": "^4.1.0",
+    "wrangler": "latest"
+  }
+}
