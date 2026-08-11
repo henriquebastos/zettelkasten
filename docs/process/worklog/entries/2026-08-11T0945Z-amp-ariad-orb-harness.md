@@ -27,9 +27,10 @@ configuration or credentials.
 
 ## Verification
 
-`bun run check` passed the Worker and Amp integration suites and bundle. Repeated setup converged
-in about 1.2 seconds, resume completed in about one second, and a clean login shell resolved the
-pinned Node, Claude Code, Codex, Pi, and Ariad versions.
+`bun run check` passed the Worker and Amp integration suites and bundle. Repeated setup converged,
+resume completed under ten seconds, and a clean login shell resolved the pinned Node, Claude Code,
+Codex, Pi, and Ariad versions. Fresh-orb validation exposed Amp resetting `PATH` after the managed
+profile block, so setup now links repository Node into Amp's existing `~/.local/bin` prefix.
 
 ## Follow-up
 

@@ -37,7 +37,9 @@ failure. Never include credentials in command output or test fixtures.
 Orb harness changes additionally require setup twice (each under two minutes), resume under ten
 seconds, and a clean minimal login shell check showing repository Node and the pinned `claude`,
 `codex`, and `pi` commands. Setup must validate all 53 vendored Ariad files and its package digest
-before installing CLIs. Resume performs no installation.
+before installing CLIs. Setup links the pinned repository Node into `~/.local/bin` because Amp's
+generated shell environment owns the final `PATH`; this intentionally makes Node 22 the default
+inside the dedicated project orb. Resume performs no installation.
 
 `bun run deploy` deploys the Worker with Wrangler. Deployment requires an injected
 `CLOUDFLARE_API_TOKEN`; `SERVICE_ADMIN_TOKEN` and `CAPABILITY_SIGNING_KEY` are Worker secrets and

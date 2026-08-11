@@ -71,6 +71,7 @@ node="$repo_root/node_modules/node/bin/node"
 npm_cli="$(command -v npm)"
 npm_cli="$($node -e 'console.log(require.resolve("npm/bin/npm-cli.js"))' 2>/dev/null || readlink -f "$npm_cli")"
 mkdir -p "$local_prefix/bin"
+ln -sfn "$node" "$local_prefix/bin/node"
 
 install_cli() {
   local package="$1" version="$2" command="$3" scripts="${4:-allow}"
