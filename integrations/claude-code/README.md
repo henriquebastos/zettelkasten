@@ -9,7 +9,9 @@ display surfaces.
 - A main session is a root keyed as `claude:<session_id>`.
 - A visible subagent is its direct child, keyed as `claude:<agent_id>` with the main session key as
   its exact parent.
-- `SessionStart` sets the canonical returned address in the session title.
+- `SessionStart` sets the canonical returned address in the session title. Because Claude ignores
+  that title output during `/clear`, a one-shot `UserPromptSubmit` hook applies the cleared session's
+  new canonical root title on its first prompt.
 - `SubagentStart` resolves the root created by `SessionStart` without creating it, then allocates the
   child, caches only the validated returned address, and gives the subagent that address as hook
   context.
@@ -69,7 +71,10 @@ Claude Code:
 ```bash
 export ZETTELKASTEN_SERVICE_URL='https://zettelkasten.example.com'
 export ZETTELKASTEN_NAMESPACE_ID='ns_...'
-export ZETTELKASTEN_NAMESPACE_CAPABILITY='...'
+read -rsp 'Namespace capability: ' ZETTELKASTEN_NAMESPACE_CAPABILITY && echo
+export ZETTELKASTEN_NAMESPACE_CAPABILITY
+claude
+unset ZETTELKASTEN_NAMESPACE_CAPABILITY
 ```
 
 The namespace capability is the only service credential the integration receives. Never provide a
@@ -86,7 +91,8 @@ claude --plugin-dir ./integrations/claude-code
 ```
 
 Use `/plugin` to confirm `zettelkasten-hierarchy` is enabled and `/hooks` to inspect its
-`SessionStart` and `SubagentStart` hooks.
+`SessionStart`, `UserPromptSubmit`, and `SubagentStart` hooks. `UserPromptSubmit` performs only the
+one-shot canonical retitle after `/clear` and otherwise returns no output.
 
 ## Failure behavior
 
@@ -100,6 +106,8 @@ credentials, prompts, transcripts, or account identity.
 The launcher refuses to start without a session-scoped parent ID or an exact remotely resolved
 parent. Its structured launch override contains only that opaque parent ID. Background-session
 startup uses Claude's native supervisor and inherits the lab's orb-local service configuration.
+The native child inherits the launching Claude process environment, so the parent must run with a
+least-privileged environment that excludes unrelated administration and deployment credentials.
 Service requests have a seven-second deadline within Claude's ten-second hook budget. A launched
 child hook failure stops its first turn, and a missing positive receipt makes the launcher stop the
 native background job rather than report an unnumbered success. Every native CLI inspection and

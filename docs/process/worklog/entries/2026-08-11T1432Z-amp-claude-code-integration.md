@@ -10,6 +10,9 @@ verification:
   - claude plugin validate ./integrations/claude-code
   - claude plugin validate .
   - isolated local marketplace installation and plugin inventory
+  - installed artifact execution outside the repository package scope
+  - installed plugin root and background-child lifecycle with one child hook execution
+  - real `/clear` allocation and first-prompt canonical retitle
   - real Claude Code startup, resume, fork, outage, concurrent-subagent, nested-launcher, and cleanup experiments
 ---
 
@@ -51,6 +54,12 @@ validator, and diff hygiene passed.
 The repository also exposes the plugin through its root Claude marketplace. The installation guide
 documents persistent user/local/project installation for CLI and interactive frontends, secure
 process-environment configuration, updates, removal, and checkout-based development.
+
+A pre-push adversarial pass added a self-contained Node ESM package boundary for marketplace cache
+execution, NodeNext type checking, absolute-only cache roots, private cache-file tests, and `/clear`
+retitling through a one-shot first-prompt hook. Real installed-plugin probes confirmed that the cached
+artifact executes, an installed root can launch one native child without duplicate lifecycle hooks,
+and `/clear` changes the visible canonical root from the old address to the newly allocated one.
 
 ## Follow-up
 

@@ -24,10 +24,11 @@ namespaces and capabilities when isolation is required.
 
 ## Install in Claude Code
 
-The plugin supports Claude Code 2.1.227 running with Node 22.23.2 on `PATH`. It works in the Claude
-Code CLI and in local Claude Code frontends that load Claude Code plugins and execute lifecycle
-hooks. It does not run inside the Claude web chat, which has no access to local plugin hooks or the
-required process environment.
+The plugin supports Claude Code 2.1.227 running with Node 22.23.2 on `PATH` in a POSIX environment
+such as Linux or macOS. It works in the Claude Code CLI and in local Claude Code frontends that load
+Claude Code plugins, execute lifecycle hooks, and provide the same POSIX environment. Native Windows
+and PowerShell are not currently supported. The plugin does not run inside the Claude web chat,
+which has no access to local plugin hooks or the required process environment.
 
 ### Install from GitHub
 
@@ -53,14 +54,17 @@ review and commit that configuration only when the whole project should require 
 
 ### Configure the local process
 
-Obtain a namespace ID and namespace capability through a private channel. Export them only into the
-process that starts Claude Code:
+Obtain a namespace ID and namespace capability through a private channel. Inject them only into the
+process that starts Claude Code. For example, a POSIX shell can read the capability without placing
+its value in shell history:
 
 ```bash
 export ZETTELKASTEN_SERVICE_URL='https://zettelkasten.henriquebastos.net'
 export ZETTELKASTEN_NAMESPACE_ID='ns_...'
-export ZETTELKASTEN_NAMESPACE_CAPABILITY='...'
+read -rsp 'Namespace capability: ' ZETTELKASTEN_NAMESPACE_CAPABILITY && echo
+export ZETTELKASTEN_NAMESPACE_CAPABILITY
 claude
+unset ZETTELKASTEN_NAMESPACE_CAPABILITY
 ```
 
 For a graphical local frontend, configure its launcher or operating-system environment with the
@@ -68,6 +72,10 @@ same three variables before starting the application. Do not place the namespace
 repository, `.claude/settings.json`, shell history, logs, or prompts. The plugin needs only the
 namespace capability; never provide a service admin token, capability-signing key, Cloudflare token,
 or Claude credential.
+
+Native background children inherit the launching Claude process environment, not only the three
+Zettelkasten variables. Start Claude from a least-privileged environment and do not expose unrelated
+deployment, administration, or signing credentials to that process.
 
 Restart Claude Code after installation if the frontend does not offer `/reload-plugins`. Confirm
 the installation without printing configuration values:
@@ -78,9 +86,11 @@ claude plugin details zettelkasten-hierarchy@zettelkasten
 ```
 
 Inside an interactive session, `/plugin` should show `zettelkasten-hierarchy` enabled and `/hooks`
-should show its `SessionStart` and `SubagentStart` hooks. A configured session receives its canonical
-address in the title. It can create an independent, native child session with the launcher command
-provided in its initial context; that child remains visible through `claude agents`.
+should show its `SessionStart`, `UserPromptSubmit`, and `SubagentStart` hooks. `UserPromptSubmit`
+performs only the one-shot canonical retitle after `/clear` and otherwise returns no output. A
+configured session receives its canonical address in the title. It can create an independent, native
+child session with the launcher command provided in its initial context; that child remains visible
+through `claude agents`.
 
 ### Update or uninstall
 

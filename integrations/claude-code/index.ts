@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { appendFile, mkdir, rename, writeFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { appendFile, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { isAbsolute, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export type Address = readonly [number, ...(number | string)[]]
@@ -31,14 +31,20 @@ interface SubagentStartInput {
 	agent_type?: string
 }
 
-export type HookInput = SessionStartInput | SubagentStartInput
+interface UserPromptSubmitInput {
+	hook_event_name: 'UserPromptSubmit'
+	session_id: string
+	prompt: string
+}
+
+export type HookInput = SessionStartInput | SubagentStartInput | UserPromptSubmitInput
 
 interface HookOutput {
 	continue?: boolean
 	stopReason?: string
 	systemMessage?: string
 	hookSpecificOutput?: {
-		hookEventName: 'SessionStart' | 'SubagentStart'
+		hookEventName: 'SessionStart' | 'SubagentStart' | 'UserPromptSubmit'
 		sessionTitle?: string
 		additionalContext?: string
 	}
@@ -58,6 +64,8 @@ interface HookDependencies {
 	request?: typeof fetch
 	storeAssignment?: (cacheDirectory: string, nativeID: string, address: string) => Promise<void>
 	storeLaunchReceipt?: (cacheDirectory: string, nativeID: string, address: string) => Promise<void>
+	storePendingTitle?: (cacheDirectory: string, nativeID: string, address: string) => Promise<void>
+	consumePendingTitle?: (cacheDirectory: string, nativeID: string) => Promise<string | undefined>
 	configureLauncher?: (environmentFile: string, nativeID: string, launcherPath: string) => Promise<void>
 }
 
@@ -248,7 +256,11 @@ export function formatSessionTitle(address: Address, currentTitle?: string): str
 }
 
 export function displayCacheDirectory(environment: Pick<RuntimeEnvironment, 'HOME' | 'XDG_CACHE_HOME'>): string | undefined {
-	const base = environment.XDG_CACHE_HOME || (environment.HOME ? resolve(environment.HOME, '.cache') : undefined)
+	const base = environment.XDG_CACHE_HOME && isAbsolute(environment.XDG_CACHE_HOME)
+		? environment.XDG_CACHE_HOME
+		: environment.HOME && isAbsolute(environment.HOME)
+			? resolve(environment.HOME, '.cache')
+			: undefined
 	return base ? resolve(base, 'zettelkasten', 'claude-code') : undefined
 }
 
@@ -274,6 +286,29 @@ export async function storeLaunchReceipt(cacheDirectory: string, nativeID: strin
 	await rename(temporary, destination)
 }
 
+export async function storePendingTitle(cacheDirectory: string, nativeID: string, address: string): Promise<void> {
+	const directory = resolve(cacheDirectory, 'pending-titles')
+	await mkdir(directory, { recursive: true, mode: 0o700 })
+	const destination = resolve(directory, assignmentFileName(nativeID))
+	const temporary = `${destination}.${process.pid}.${randomUUID()}.tmp`
+	await writeFile(temporary, `${address}\n`, { mode: 0o600 })
+	await rename(temporary, destination)
+}
+
+export async function consumePendingTitle(cacheDirectory: string, nativeID: string): Promise<string | undefined> {
+	const path = resolve(cacheDirectory, 'pending-titles', assignmentFileName(nativeID))
+	let address: string
+	try {
+		address = (await readFile(path, 'utf8')).trim()
+	} catch (error) {
+		if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined
+		throw error
+	}
+	parseAddress(address)
+	await unlink(path)
+	return address
+}
+
 function shellQuote(value: string): string {
 	return `'${value.replaceAll("'", "'\\''")}'`
 }
@@ -297,6 +332,17 @@ export async function handleHook(
 	environment: RuntimeEnvironment,
 	dependencies: HookDependencies = {},
 ): Promise<HookOutput | undefined> {
+	if (input.hook_event_name === 'UserPromptSubmit') {
+		const cacheDirectory = displayCacheDirectory(environment)
+		if (!cacheDirectory) return undefined
+		try {
+			const sessionTitle = await (dependencies.consumePendingTitle ?? consumePendingTitle)(cacheDirectory, input.session_id)
+			return sessionTitle ? { hookSpecificOutput: { hookEventName: 'UserPromptSubmit', sessionTitle } } : undefined
+		} catch (error) {
+			return warning(error)
+		}
+	}
+
 	if (input.hook_event_name === 'SessionStart' && input.source === 'fork') {
 		return {
 			systemMessage: 'Zettelkasten numbering was deferred: Claude Code identifies this session as a fork but does not expose its source session ID to hooks.',
@@ -359,10 +405,23 @@ export async function handleHook(
 					formatAddress(assignment.address),
 				)
 			}
+			if (input.source === 'clear') {
+				const cacheDirectory = displayCacheDirectory(environment)
+				if (!cacheDirectory) {
+					throw new HierarchyAllocationError('Claude Code did not provide a user cache directory; the cleared session title was deferred.')
+				}
+				await (dependencies.storePendingTitle ?? storePendingTitle)(
+					cacheDirectory,
+					input.session_id,
+					formatAddress(assignment.address),
+				)
+			}
 			return {
 				hookSpecificOutput: {
 					hookEventName: 'SessionStart',
-					sessionTitle: formatSessionTitle(assignment.address, input.session_title),
+					sessionTitle: input.source === 'clear'
+						? formatAddress(assignment.address)
+						: formatSessionTitle(assignment.address, input.session_title),
 					additionalContext: 'When creating an independent Claude Code background session, run `node "$ZETTELKASTEN_CLAUDE_LAUNCHER" "<task>"` instead of invoking `claude --bg` directly. The launcher preserves authoritative Zettelkasten parentage and the child remains visible in Claude agent view.',
 				},
 			}

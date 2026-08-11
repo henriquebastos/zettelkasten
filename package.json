@@ -9,7 +9,7 @@
     "amp:test": "bun test integrations/amp/*.test.ts",
     "amp:build": "bun build integrations/amp/index.ts --outdir /tmp/zettelkasten-amp-build --external @ampcode/plugin",
     "claude:check": "bun run claude:typecheck && bun run claude:test",
-    "claude:typecheck": "node_modules/node/bin/node node_modules/typescript/bin/tsc --noEmit --strict --target ES2023 --module ESNext --moduleResolution Bundler --types node --allowImportingTsExtensions integrations/claude-code/index.ts integrations/claude-code/launcher.ts",
+    "claude:typecheck": "node_modules/node/bin/node node_modules/typescript/bin/tsc --noEmit --strict --target ES2023 --module NodeNext --moduleResolution NodeNext --types node --allowImportingTsExtensions --erasableSyntaxOnly integrations/claude-code/index.ts integrations/claude-code/launcher.ts",
     "claude:test": "bun test integrations/claude-code/*.test.ts",
     "deploy": "node_modules/node/bin/node node_modules/wrangler/bin/wrangler.js deploy",
     "dev": "node_modules/node/bin/node node_modules/wrangler/bin/wrangler.js dev",

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { spawnSync } from 'node:child_process'
+import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
@@ -11,6 +12,10 @@ import {
 	formatSessionTitle,
 	handleHook,
 	parseAddress,
+	storeAssignment,
+	storeLaunchReceipt,
+	storePendingTitle,
+	consumePendingTitle,
 	type HookInput,
 } from './index.ts'
 
@@ -59,7 +64,59 @@ describe('Claude address handling', () => {
 	test('uses the standard user cache without depending on the plugin installation path', () => {
 		expect(displayCacheDirectory({ HOME: '/home/test' })).toBe('/home/test/.cache/zettelkasten/claude-code')
 		expect(displayCacheDirectory({ HOME: '/home/test', XDG_CACHE_HOME: '/cache' })).toBe('/cache/zettelkasten/claude-code')
+		expect(displayCacheDirectory({ HOME: '/home/test', XDG_CACHE_HOME: 'relative-cache' })).toBe('/home/test/.cache/zettelkasten/claude-code')
+		expect(displayCacheDirectory({ HOME: 'relative-home' })).toBeUndefined()
 		expect(displayCacheDirectory({})).toBeUndefined()
+	})
+
+	test('stores only canonical display values in private cache files', async () => {
+		const directory = await mkdtemp(resolve(tmpdir(), 'zettelkasten-claude-cache-'))
+		try {
+			await storeAssignment(directory, 'opaque-agent-id', '4a')
+			await storeLaunchReceipt(directory, 'opaque-session-id', '4b')
+			await storePendingTitle(directory, 'cleared-session-id', '5')
+			for (const [subdirectory, nativeID, expected] of [
+				['assignments', 'opaque-agent-id', '4a\n'],
+				['launch-receipts', 'opaque-session-id', '4b\n'],
+				['pending-titles', 'cleared-session-id', '5\n'],
+			] as const) {
+				const parent = resolve(directory, subdirectory)
+				const path = resolve(parent, assignmentFileName(nativeID))
+				expect((await stat(parent)).mode & 0o777).toBe(0o700)
+				expect((await stat(path)).mode & 0o777).toBe(0o600)
+				expect(await readFile(path, 'utf8')).toBe(expected)
+			}
+			expect(await consumePendingTitle(directory, 'cleared-session-id')).toBe('5')
+			expect(await consumePendingTitle(directory, 'cleared-session-id')).toBeUndefined()
+		} finally {
+			await rm(directory, { recursive: true, force: true })
+		}
+	})
+
+	test('executes the marketplace artifact outside the repository package scope', async () => {
+		const directory = await mkdtemp(resolve(tmpdir(), 'zettelkasten-claude-installed-'))
+		try {
+			const plugin = resolve(directory, 'plugin')
+			await cp(import.meta.dir, plugin, { recursive: true })
+			const node = resolve(import.meta.dir, '..', '..', 'node_modules', 'node', 'bin', 'node')
+			const hook = spawnSync(node, [resolve(plugin, 'index.ts')], {
+				cwd: directory,
+				encoding: 'utf8',
+				input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: 'installed-root', source: 'startup' }),
+				env: { HOME: directory, PATH: globalThis.process.env.PATH ?? '' },
+			})
+			expect(hook.status).toBe(0)
+			expect(JSON.parse(hook.stdout)).toMatchObject({ systemMessage: expect.stringContaining('configuration is incomplete') })
+			const launcher = spawnSync(node, [resolve(plugin, 'launcher.ts')], {
+				cwd: directory,
+				encoding: 'utf8',
+				env: { HOME: directory, PATH: globalThis.process.env.PATH ?? '' },
+			})
+			expect(launcher.status).toBe(1)
+			expect(launcher.stderr).toContain('task is required')
+		} finally {
+			await rm(directory, { recursive: true, force: true })
+		}
 	})
 
 	test('configures the current launcher identity and clears launch-only parent provenance', async () => {
@@ -108,6 +165,22 @@ describe('Claude address handling', () => {
 				id: 'valid', content: '4a Explore · inspect hooks',
 			})}\n`)
 			expect(await new Response(process.stderr).text()).toBe('')
+
+			const fallbackCache = resolve(directory, '.cache', 'zettelkasten', 'claude-code', 'assignments')
+			await mkdir(fallbackCache, { recursive: true })
+			await writeFile(resolve(fallbackCache, assignmentFileName('fallback')), '4b\n')
+			const relativeXdg = Bun.spawn(['sh', '-c', settings.subagentStatusLine.command], {
+				env: { ...globalThis.process.env, HOME: directory, XDG_CACHE_HOME: 'relative-cache' },
+				stdin: 'pipe',
+				stdout: 'pipe',
+				stderr: 'pipe',
+			})
+			relativeXdg.stdin.write(JSON.stringify({ tasks: [{ id: 'fallback', label: 'Fallback' }] }))
+			relativeXdg.stdin.end()
+			expect(await relativeXdg.exited).toBe(0)
+			expect(await new Response(relativeXdg.stdout).text()).toBe(`${JSON.stringify({
+				id: 'fallback', content: '4b Fallback',
+			})}\n`)
 		} finally {
 			await rm(directory, { recursive: true, force: true })
 		}
@@ -189,6 +262,39 @@ describe('Claude lifecycle hooks', () => {
 			sessionTitle: '4 Old title',
 		})
 		expect(output?.hookSpecificOutput?.additionalContext).toContain('ZETTELKASTEN_CLAUDE_LAUNCHER')
+	})
+
+	test('applies a cleared session’s new canonical title on its first prompt', async () => {
+		let pendingTitle: string | undefined
+		const cleared = await handleHook(session({
+			session_id: 'cleared-root', source: 'clear', session_title: '4 Previous session',
+		}), environment, {
+			request: (async (input, init) => new URL(String(input)).pathname.endsWith('/resolve')
+				? Response.json({ code: 'element_not_found' }, { status: 404 })
+				: Response.json({ ...JSON.parse(String(init?.body)), address: '5' }, { status: 201 })) as typeof fetch,
+			configureLauncher: async () => {},
+			storePendingTitle: async (_directory, id, title) => {
+				expect(id).toBe('cleared-root')
+				pendingTitle = title
+			},
+		})
+		expect(cleared?.hookSpecificOutput?.sessionTitle).toBe('5')
+		expect(pendingTitle).toBe('5')
+
+		const firstPrompt = await handleHook({
+			hook_event_name: 'UserPromptSubmit', session_id: 'cleared-root', prompt: 'Continue',
+		}, environment, {
+			consumePendingTitle: async (_directory, id) => {
+				expect(id).toBe('cleared-root')
+				const title = pendingTitle
+				pendingTitle = undefined
+				return title
+			},
+		})
+		expect(firstPrompt?.hookSpecificOutput).toEqual({ hookEventName: 'UserPromptSubmit', sessionTitle: '5' })
+		expect(await handleHook({
+			hook_event_name: 'UserPromptSubmit', session_id: 'cleared-root', prompt: 'Again',
+		}, environment, { consumePendingTitle: async () => pendingTitle })).toBeUndefined()
 	})
 
 	test('recognizes a launcher-preallocated full session as a validated child', async () => {
