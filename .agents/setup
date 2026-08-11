@@ -1,5 +1,121 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ariad_root="$repo_root/.agents/skills/using-ariad"
+local_prefix="$HOME/.local"
+
 printf '%s\n' 'Installing locked project dependencies...'
+cd "$repo_root"
 bun install --frozen-lockfile
+
+printf '%s\n' 'Verifying vendored Ariad package...'
+python3 - "$ariad_root" <<'PY'
+import hashlib
+import json
+import os
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+expected = {
+    "format_version": "1",
+    "package": "using-ariad",
+    "package_version": "0.2.1",
+    "source_path": "skills/using-ariad",
+    "package_digest": "82abd3545b6d456649bc33fddb19671939ab512dd0249050a25fe7600df25572",
+}
+for name, value in expected.items():
+    if manifest.get(name) != value:
+        raise SystemExit(f"Ariad manifest {name} mismatch")
+
+payload = {}
+destinations = set()
+for entry in manifest.get("files", []):
+    destination = entry.get("destination")
+    if not isinstance(destination, str) or destination.startswith(("/", "../")) or "/../" in destination:
+        raise SystemExit("Ariad manifest has an unsafe destination")
+    if destination in destinations:
+        raise SystemExit(f"Ariad manifest repeats {destination}")
+    destinations.add(destination)
+    path = root / destination
+    if not path.is_file() or path.is_symlink():
+        raise SystemExit(f"Ariad file missing or unsafe: {destination}")
+    content = path.read_bytes()
+    if hashlib.sha256(content).hexdigest() != entry.get("sha256"):
+        raise SystemExit(f"Ariad file checksum mismatch: {destination}")
+    payload[destination] = content
+
+actual = set()
+for directory, dirnames, filenames in os.walk(root, followlinks=False):
+    base = pathlib.Path(directory)
+    for name in dirnames + filenames:
+        path = base / name
+        if path.is_symlink():
+            raise SystemExit(f"Ariad package contains a symlink: {path.relative_to(root)}")
+    actual.update((base / name).relative_to(root).as_posix() for name in filenames)
+inventory = destinations | {"manifest.json"}
+if actual != inventory or len(actual) != 53:
+    raise SystemExit(f"Ariad inventory mismatch (expected 53 files, found {len(actual)})")
+
+digest_input = b"".join(
+    name.encode() + b"\0" + payload[name] + b"\0" for name in sorted(payload)
+)
+if hashlib.sha256(digest_input).hexdigest() != expected["package_digest"]:
+    raise SystemExit("Ariad package digest mismatch")
+print("Ariad using-ariad 0.2.1 verified (53 files).")
+PY
+
+node="$repo_root/node_modules/node/bin/node"
+npm_cli="$(command -v npm)"
+npm_cli="$($node -e 'console.log(require.resolve("npm/bin/npm-cli.js"))' 2>/dev/null || readlink -f "$npm_cli")"
+mkdir -p "$local_prefix/bin"
+
+install_cli() {
+  local package="$1" version="$2" command="$3" scripts="${4:-allow}"
+  local package_json="$local_prefix/lib/node_modules/$package/package.json"
+  local installed=""
+  if [[ -f "$package_json" ]]; then
+    installed="$($node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).version)' "$package_json")"
+  fi
+  if [[ "$installed" != "$version" ]]; then
+    printf 'Installing %s@%s...\n' "$package" "$version"
+    local args=(install --global --prefix "$local_prefix" --no-audit --no-fund "$package@$version")
+    if [[ "$scripts" == ignore ]]; then
+      args=(install --global --prefix "$local_prefix" --no-audit --no-fund --ignore-scripts "$package@$version")
+    fi
+    "$node" "$npm_cli" "${args[@]}"
+  else
+    printf '%s@%s already installed.\n' "$package" "$version"
+  fi
+  [[ -x "$local_prefix/bin/$command" ]] || { printf 'Missing CLI: %s\n' "$command" >&2; return 1; }
+}
+
+install_cli '@anthropic-ai/claude-code' '2.1.227' claude
+install_cli '@openai/codex' '0.147.0' codex
+install_cli '@earendil-works/pi-coding-agent' '0.84.1' pi ignore
+
+profile_marker='# zettelkasten development harness PATH'
+touch "$HOME/.bash_profile"
+if ! grep -Fqx "$profile_marker" "$HOME/.bash_profile"; then
+  cat >> "$HOME/.bash_profile" <<EOF
+
+$profile_marker
+case "\$PWD/" in
+  "$repo_root/"*)
+    if [[ -z "\${ZETTELKASTEN_HARNESS_PATH_ACTIVE:-}" ]]; then
+      export ZETTELKASTEN_HARNESS_PATH_ACTIVE=1
+      export PATH="$repo_root/node_modules/node/bin:$local_prefix/bin:\$PATH"
+    fi
+    ;;
+esac
+EOF
+fi
+
+export PATH="$repo_root/node_modules/node/bin:$local_prefix/bin:$PATH"
+[[ "$(node --version)" == 'v22.23.2' ]]
+[[ "$(claude --version)" == *'2.1.227'* ]]
+[[ "$(codex --version)" == *'0.147.0'* ]]
+[[ "$(pi --version)" == *'0.84.1'* ]]
+printf '%s\n' 'Development harness ready: node 22.23.2, claude 2.1.227, codex 0.147.0, pi 0.84.1.'

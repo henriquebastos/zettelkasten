@@ -79,6 +79,21 @@ bun run check
 bun run dev
 ```
 
+### Development harness
+
+Fresh Amp orbs verify the vendored `using-ariad` package from the
+[`henriquebastos/ariad`](https://github.com/henriquebastos/ariad) fork (Ariad 0.2.1, revision
+`7521d53983039bd808051d34bdcc56faec3277da`) and install these exact user-local integration tools:
+
+- `@anthropic-ai/claude-code@2.1.227`
+- `@openai/codex@0.147.0`
+- `@earendil-works/pi-coding-agent@0.84.1`
+
+The harness uses repository Node 22.23.2. Run `.agents/setup` to provision it and
+`.agents/resume` for a fast availability check. Authentication and API keys are supplied by each
+user at runtime; setup does not authenticate, and credentials must never be stored in this
+repository.
+
 `bun run check` runs Worker type checking and tests, then Amp integration tests and a bundle with
 `@ampcode/plugin` externalized. Deployment uses three credentials with separate boundaries:
 
