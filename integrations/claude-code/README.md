@@ -64,9 +64,17 @@ resume title use the canonical address returned through `SessionStart.sessionTit
 
 ## Requirements and configuration
 
-The dedicated integration lab targets its pinned POSIX environment and runs the TypeScript hook
-directly with repository Node 22.23.2 on `PATH`. Export these values in the environment that launches
-Claude Code:
+Marketplace installations declare native Claude plugin configuration for the service URL, namespace
+ID, and capability. Choose the same existing namespace ID and corresponding capability used by the
+other coding-agent integrations to share one hierarchy. Claude persists the non-secret service URL
+and namespace ID in user settings; the capability is marked sensitive and stored in Keychain or
+Claude's private credential file. Hook processes receive the values through
+`CLAUDE_PLUGIN_OPTION_*`; a partial plugin configuration fails closed rather than borrowing missing
+values from process variables.
+
+The dedicated integration lab also supports loading the checkout directly. That path runs the
+TypeScript hook with repository Node 22.23.2 on `PATH` and uses these process variables as a
+development fallback:
 
 ```bash
 export ZETTELKASTEN_SERVICE_URL='https://zettelkasten.example.com'
@@ -79,7 +87,9 @@ unset ZETTELKASTEN_NAMESPACE_CAPABILITY
 
 The namespace capability is the only service credential the integration receives. Never provide a
 service administration token, capability signing key, deployment token, or Cloudflare credential.
-Keep the capability outside repositories, shell history, logs, and Claude project memory.
+Keep the capability outside repositories, shell history, logs, artifacts, and Claude project
+memory. The installed launcher carries only the opaque parent session ID in child settings; every
+child loads the configured credential directly from Claude's credential store.
 
 For persistent user, local, or project installation through the repository's Claude marketplace,
 see the [installation guide](../../docs/installation.md#install-in-claude-code).
@@ -103,15 +113,21 @@ or persists a local fallback. Its user-cache state contains only canonical retur
 by filesystem-safe encodings of opaque native agent IDs; it contains no keys, parent keys,
 credentials, prompts, transcripts, or account identity.
 
-The launcher refuses to start without a session-scoped parent ID or an exact remotely resolved
-parent. Its structured launch override contains only that opaque parent ID. Background-session
-startup uses Claude's native supervisor and inherits the lab's orb-local service configuration.
+The launcher refuses to start without the session-scoped parent ID and canonical parent address
+validated by the startup hook. Its structured launch override contains only that opaque parent ID.
+The child hook resolves the exact parent before allocation and writes a receipt only after validating
+direct lineage. Background-session startup uses Claude's native supervisor; marketplace children
+load the installed user configuration, while checkout-loaded children inherit the lab's orb-local
+development configuration.
 The native child inherits the launching Claude process environment, so the parent must run with a
 least-privileged environment that excludes unrelated administration and deployment credentials.
 Service requests have a seven-second deadline within Claude's ten-second hook budget. A launched
 child hook failure stops its first turn, and a missing positive receipt makes the launcher stop the
 native background job rather than report an unnumbered success. Every native CLI inspection and
-launch has a bounded wall-clock timeout. If concurrent launches prevent unique cleanup targeting,
+launch has a bounded wall-clock timeout. Attached native sessions can leave dispatch and stop CLI
+wrappers alive after printing an exact owned-job acknowledgment; the launcher accepts only those
+specific timeout acknowledgments and still requires canonical receipt, roster, and terminal-state
+validation. If concurrent launches prevent unique cleanup targeting,
 the launcher never infers ownership from global agent-view changes: if native launch output does not
 return its own ID, it reports cleanup as unverified instead of stopping an arbitrary job.
 

@@ -54,6 +54,9 @@ interface RuntimeEnvironment {
 	ZETTELKASTEN_SERVICE_URL?: string
 	ZETTELKASTEN_NAMESPACE_ID?: string
 	ZETTELKASTEN_NAMESPACE_CAPABILITY?: string
+	CLAUDE_PLUGIN_OPTION_SERVICE_URL?: string
+	CLAUDE_PLUGIN_OPTION_NAMESPACE_ID?: string
+	CLAUDE_PLUGIN_OPTION_NAMESPACE_CAPABILITY?: string
 	HOME?: string
 	XDG_CACHE_HOME?: string
 	CLAUDE_ENV_FILE?: string
@@ -66,7 +69,13 @@ interface HookDependencies {
 	storeLaunchReceipt?: (cacheDirectory: string, nativeID: string, address: string) => Promise<void>
 	storePendingTitle?: (cacheDirectory: string, nativeID: string, address: string) => Promise<void>
 	consumePendingTitle?: (cacheDirectory: string, nativeID: string) => Promise<string | undefined>
-	configureLauncher?: (environmentFile: string, nativeID: string, launcherPath: string) => Promise<void>
+	configureLauncher?: (
+		environmentFile: string,
+		nativeID: string,
+		address: string,
+		launcherPath: string,
+		useInstalledPlugin: boolean,
+	) => Promise<void>
 }
 
 export class HierarchyAllocationError extends Error {
@@ -268,6 +277,33 @@ export function assignmentFileName(nativeID: string): string {
 	return Buffer.from(nativeID).toString('base64url')
 }
 
+export function hierarchyConfiguration(environment: RuntimeEnvironment): {
+	serviceURL: string
+	namespaceID: string
+	capability: string
+	useInstalledPlugin: boolean
+} {
+	const pluginKeys = [
+		'CLAUDE_PLUGIN_OPTION_SERVICE_URL',
+		'CLAUDE_PLUGIN_OPTION_NAMESPACE_ID',
+		'CLAUDE_PLUGIN_OPTION_NAMESPACE_CAPABILITY',
+	] as const
+	const usePluginConfiguration = pluginKeys.some((key) => key in environment)
+	return usePluginConfiguration
+		? {
+			serviceURL: environment.CLAUDE_PLUGIN_OPTION_SERVICE_URL?.trim() ?? '',
+			namespaceID: environment.CLAUDE_PLUGIN_OPTION_NAMESPACE_ID?.trim() ?? '',
+			capability: environment.CLAUDE_PLUGIN_OPTION_NAMESPACE_CAPABILITY?.trim() ?? '',
+			useInstalledPlugin: true,
+		}
+		: {
+			serviceURL: environment.ZETTELKASTEN_SERVICE_URL?.trim() ?? '',
+			namespaceID: environment.ZETTELKASTEN_NAMESPACE_ID?.trim() ?? '',
+			capability: environment.ZETTELKASTEN_NAMESPACE_CAPABILITY?.trim() ?? '',
+			useInstalledPlugin: false,
+		}
+}
+
 export async function storeAssignment(cacheDirectory: string, nativeID: string, address: string): Promise<void> {
 	const directory = resolve(cacheDirectory, 'assignments')
 	await mkdir(directory, { recursive: true, mode: 0o700 })
@@ -313,10 +349,16 @@ function shellQuote(value: string): string {
 	return `'${value.replaceAll("'", "'\\''")}'`
 }
 
-export async function configureLauncher(environmentFile: string, nativeID: string, launcherPath: string): Promise<void> {
+export async function configureLauncher(
+	environmentFile: string,
+	nativeID: string,
+	address: string,
+	launcherPath: string,
+	useInstalledPlugin: boolean,
+): Promise<void> {
 	await appendFile(
 		environmentFile,
-		`export ZETTELKASTEN_CLAUDE_SESSION_ID=${shellQuote(nativeID)}\nexport ZETTELKASTEN_CLAUDE_LAUNCHER=${shellQuote(launcherPath)}\nunset ZETTELKASTEN_CLAUDE_PARENT_SESSION_ID\n`,
+		`export ZETTELKASTEN_CLAUDE_SESSION_ID=${shellQuote(nativeID)}\nexport ZETTELKASTEN_CLAUDE_ADDRESS=${shellQuote(address)}\nexport ZETTELKASTEN_CLAUDE_LAUNCHER=${shellQuote(launcherPath)}\n${useInstalledPlugin ? 'export ZETTELKASTEN_CLAUDE_USE_INSTALLED_PLUGIN=1' : 'unset ZETTELKASTEN_CLAUDE_USE_INSTALLED_PLUGIN'}\nunset ZETTELKASTEN_CLAUDE_PARENT_SESSION_ID\n`,
 	)
 }
 
@@ -350,19 +392,27 @@ export async function handleHook(
 	}
 
 	const requestSignal = AbortSignal.timeout(7_000)
+	const configuration = hierarchyConfiguration(environment)
 	const allocator = new RemoteHierarchyAllocator(
-		environment.ZETTELKASTEN_SERVICE_URL ?? '',
-		environment.ZETTELKASTEN_NAMESPACE_ID ?? '',
-		environment.ZETTELKASTEN_NAMESPACE_CAPABILITY ?? '',
+		configuration.serviceURL,
+		configuration.namespaceID,
+		configuration.capability,
 		dependencies.request,
 		requestSignal,
 	)
 
 	try {
+		if (!configuration.serviceURL || !configuration.namespaceID || !configuration.capability) {
+			throw new HierarchyAllocationError(configuration.useInstalledPlugin
+				? 'Zettelkasten plugin configuration is incomplete. Open /plugin, select zettelkasten-hierarchy, and use Configure options for the service URL, namespace ID, and namespace capability.'
+				: 'Zettelkasten configuration is incomplete. Set ZETTELKASTEN_SERVICE_URL, ZETTELKASTEN_NAMESPACE_ID, and ZETTELKASTEN_NAMESPACE_CAPABILITY.')
+		}
 		if (input.hook_event_name === 'SessionStart') {
 			let assignment: ResolvedHierarchyAssignment
 			let lineageValidated = false
-			const launchParentID = environment.ZETTELKASTEN_CLAUDE_PARENT_SESSION_ID
+			const launchParentID = input.source === 'startup'
+				? environment.ZETTELKASTEN_CLAUDE_PARENT_SESSION_ID
+				: undefined
 			if (launchParentID) {
 				const parent = await allocator.resolveAssignment(launchParentID)
 				const address = await allocator.allocate(input.session_id, launchParentID)
@@ -389,10 +439,13 @@ export async function handleHook(
 				throw new HierarchyAllocationError('Claude Code did not provide session environment storage; background-session launching was deferred.')
 			}
 			const launcherPath = fileURLToPath(new URL('launcher.ts', import.meta.url))
+			const formattedAddress = formatAddress(assignment.address)
 			await (dependencies.configureLauncher ?? configureLauncher)(
 				environment.CLAUDE_ENV_FILE,
 				input.session_id,
+				formattedAddress,
 				launcherPath,
+				configuration.useInstalledPlugin,
 			)
 			if (launchParentID && input.source === 'startup') {
 				const cacheDirectory = displayCacheDirectory(environment)
@@ -402,7 +455,7 @@ export async function handleHook(
 				await (dependencies.storeLaunchReceipt ?? storeLaunchReceipt)(
 					cacheDirectory,
 					input.session_id,
-					formatAddress(assignment.address),
+					formattedAddress,
 				)
 			}
 			if (input.source === 'clear') {
@@ -413,14 +466,14 @@ export async function handleHook(
 				await (dependencies.storePendingTitle ?? storePendingTitle)(
 					cacheDirectory,
 					input.session_id,
-					formatAddress(assignment.address),
+					formattedAddress,
 				)
 			}
 			return {
 				hookSpecificOutput: {
 					hookEventName: 'SessionStart',
 					sessionTitle: input.source === 'clear'
-						? formatAddress(assignment.address)
+						? formattedAddress
 						: formatSessionTitle(assignment.address, input.session_title),
 					additionalContext: 'When creating an independent Claude Code background session, run `node "$ZETTELKASTEN_CLAUDE_LAUNCHER" "<task>"` instead of invoking `claude --bg` directly. The launcher preserves authoritative Zettelkasten parentage and the child remains visible in Claude agent view.',
 				},
@@ -454,7 +507,11 @@ export async function handleHook(
 		}
 	} catch (error) {
 		const output = warning(error)
-		if (input.hook_event_name === 'SessionStart' && environment.ZETTELKASTEN_CLAUDE_PARENT_SESSION_ID) {
+		if (
+			input.hook_event_name === 'SessionStart'
+			&& input.source === 'startup'
+			&& environment.ZETTELKASTEN_CLAUDE_PARENT_SESSION_ID
+		) {
 			return { ...output, continue: false, stopReason: output.systemMessage }
 		}
 		return output

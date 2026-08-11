@@ -5,17 +5,15 @@ import { fileURLToPath } from 'node:url'
 
 import {
 	HierarchyAllocationError,
-	RemoteHierarchyAllocator,
 	assignmentFileName,
 	displayCacheDirectory,
 	parseAddress,
 } from './index.ts'
 
 interface LauncherEnvironment {
-	ZETTELKASTEN_SERVICE_URL?: string
-	ZETTELKASTEN_NAMESPACE_ID?: string
-	ZETTELKASTEN_NAMESPACE_CAPABILITY?: string
 	ZETTELKASTEN_CLAUDE_SESSION_ID?: string
+	ZETTELKASTEN_CLAUDE_ADDRESS?: string
+	ZETTELKASTEN_CLAUDE_USE_INSTALLED_PLUGIN?: string
 	HOME?: string
 	XDG_CACHE_HOME?: string
 	PATH?: string
@@ -23,14 +21,18 @@ interface LauncherEnvironment {
 
 interface LauncherDependencies {
 	spawn?: (command: string, args: string[]) => { error?: Error; status: number | null; stdout?: string; stderr?: string }
-	request?: typeof fetch
 	write?: (message: string) => void
 	pluginDirectory?: string
 	resolveClaude?: (environment: LauncherEnvironment) => string
 	validateClaude?: (executable: string) => void
-	confirmChild?: (executable: string, shortID: string, environment: LauncherEnvironment) => Promise<string>
+	confirmChild?: (
+		executable: string,
+		shortID: string,
+		environment: LauncherEnvironment,
+		observeSessionID: (sessionID: string) => void,
+	) => Promise<string>
 	stopChild?: (executable: string, shortID: string) => boolean
-	discardReceipt?: (executable: string, shortID: string, environment: LauncherEnvironment) => boolean
+	discardReceipt?: (sessionID: string, environment: LauncherEnvironment) => boolean
 }
 
 interface CommandResult {
@@ -48,10 +50,26 @@ export interface LaunchResult {
 function runClaude(executable: string, args: string[], timeout: number): CommandResult {
 	return spawnSync(executable, args, {
 		encoding: 'utf8',
+		env: claudeSubprocessEnvironment(process.env),
 		timeout,
 		killSignal: 'SIGKILL',
 		maxBuffer: 1024 * 1024,
 	})
+}
+
+export function claudeSubprocessEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+	const normalized = { ...environment }
+	delete normalized.FORCE_COLOR
+	delete normalized.NO_COLOR
+	if (normalized.ZETTELKASTEN_CLAUDE_USE_INSTALLED_PLUGIN === '1') {
+		delete normalized.ZETTELKASTEN_SERVICE_URL
+		delete normalized.ZETTELKASTEN_NAMESPACE_ID
+		delete normalized.ZETTELKASTEN_NAMESPACE_CAPABILITY
+		delete normalized.CLAUDE_PLUGIN_OPTION_SERVICE_URL
+		delete normalized.CLAUDE_PLUGIN_OPTION_NAMESPACE_ID
+		delete normalized.CLAUDE_PLUGIN_OPTION_NAMESPACE_CAPABILITY
+	}
+	return normalized
 }
 
 export function resolveClaudeExecutable(environment: LauncherEnvironment): string {
@@ -90,14 +108,19 @@ function sleep(milliseconds: number): void {
 	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds)
 }
 
+function commandTimedOut(error?: Error): boolean {
+	return error instanceof Error && 'code' in error && error.code === 'ETIMEDOUT'
+}
+
 export async function confirmChildLaunch(
 	executable: string,
 	shortID: string,
 	environment: LauncherEnvironment,
+	observeSessionID: (sessionID: string) => void = () => {},
 ): Promise<string> {
 	const cacheDirectory = displayCacheDirectory(environment)
 	if (!cacheDirectory) throw new HierarchyAllocationError('No user cache directory is available for launch confirmation.')
-	const deadline = Date.now() + 10_000
+	const deadline = Date.now() + 30_000
 	while (Date.now() < deadline) {
 		const remaining = deadline - Date.now()
 		const listed = runClaude(executable, ['agents', '--json', '--all'], Math.max(1, Math.min(1_000, remaining)))
@@ -111,6 +134,7 @@ export async function confirmChildLaunch(
 			if (rows) {
 				const sessionID = rows.find((row) => row.id === shortID)?.sessionId
 				if (sessionID) {
+					observeSessionID(sessionID)
 					const path = resolve(cacheDirectory, 'launch-receipts', assignmentFileName(sessionID))
 					try {
 						const address = readFileSync(path, 'utf8').trim()
@@ -135,7 +159,7 @@ export async function confirmChildLaunch(
 		}
 		sleep(Math.min(100, Math.max(1, deadline - Date.now())))
 	}
-	throw new HierarchyAllocationError('Claude background session did not confirm hierarchy initialization within 10 seconds.')
+	throw new HierarchyAllocationError('Claude background session did not confirm hierarchy initialization within 30 seconds.')
 }
 
 export function stopChildLaunch(
@@ -145,7 +169,10 @@ export function stopChildLaunch(
 ): boolean {
 	const deadline = Date.now() + 5_000
 	const stopped = run(['stop', shortID], 2_000)
-	if (stopped.error || stopped.status !== 0) return false
+	const exactStopOutput = stopped.stdout === `stopped ${shortID}\n` || stopped.stdout === `stopped ${shortID}`
+	const stopAcknowledged = (!stopped.error && stopped.status === 0)
+		|| (commandTimedOut(stopped.error) && exactStopOutput)
+	if (!stopAcknowledged) return false
 	while (Date.now() < deadline) {
 		const listed = run(['agents', '--json', '--all'], Math.max(1, Math.min(1_000, deadline - Date.now())))
 		if (!listed.error && listed.status === 0) {
@@ -162,23 +189,14 @@ export function stopChildLaunch(
 	return false
 }
 
-export function discardLaunchReceipt(executable: string, shortID: string, environment: LauncherEnvironment): boolean {
+export function discardLaunchReceipt(sessionID: string, environment: LauncherEnvironment): boolean {
 	const cacheDirectory = displayCacheDirectory(environment)
 	if (!cacheDirectory) return false
-	const listed = runClaude(executable, ['agents', '--json', '--all'], 1_000)
-	if (listed.error || listed.status !== 0) return false
 	try {
-		const rows = JSON.parse(listed.stdout) as Array<{ id?: string; sessionId?: string }>
-		const sessionID = rows.find((row) => row.id === shortID)?.sessionId
-		if (!sessionID) return true
-		try {
-			unlinkSync(resolve(cacheDirectory, 'launch-receipts', assignmentFileName(sessionID)))
-			return true
-		} catch (error) {
-			return error instanceof Error && 'code' in error && error.code === 'ENOENT'
-		}
-	} catch {
-		return false
+		unlinkSync(resolve(cacheDirectory, 'launch-receipts', assignmentFileName(sessionID)))
+		return true
+	} catch (error) {
+		return error instanceof Error && 'code' in error && error.code === 'ENOENT'
 	}
 }
 
@@ -192,14 +210,13 @@ export async function launchBackgroundSession(
 	if (!parentSessionID) {
 		throw new HierarchyAllocationError('No authoritative parent Claude session ID is available; launch was deferred.')
 	}
-	const allocator = new RemoteHierarchyAllocator(
-		environment.ZETTELKASTEN_SERVICE_URL ?? '',
-		environment.ZETTELKASTEN_NAMESPACE_ID ?? '',
-		environment.ZETTELKASTEN_NAMESPACE_CAPABILITY ?? '',
-		dependencies.request,
-	)
-	const parent = await allocator.resolveAssignment(parentSessionID)
-	const parentAddress = parent.address.join('')
+	const parentAddress = environment.ZETTELKASTEN_CLAUDE_ADDRESS ?? ''
+	let parsedParentAddress
+	try {
+		parsedParentAddress = parseAddress(parentAddress)
+	} catch {
+		throw new HierarchyAllocationError('No authoritative parent Zettelkasten address is available; launch was deferred.')
+	}
 	const write = dependencies.write ?? ((message: string) => { process.stdout.write(message) })
 	write(`Launching a child of Zettelkasten address ${parentAddress} as a Claude background session.\n`)
 	const pluginDirectory = dependencies.pluginDirectory ?? fileURLToPath(new URL('.', import.meta.url))
@@ -207,26 +224,40 @@ export async function launchBackgroundSession(
 	const validate = dependencies.validateClaude ?? validateClaudeRuntime
 	validate(executable)
 	const launchSettings = JSON.stringify({ env: { ZETTELKASTEN_CLAUDE_PARENT_SESSION_ID: parentSessionID } })
+	const pluginArguments = environment.ZETTELKASTEN_CLAUDE_USE_INSTALLED_PLUGIN === '1'
+		? []
+		: ['--plugin-dir', pluginDirectory]
 	const spawned = (dependencies.spawn ?? ((command, args) => runClaude(command, args, 12_000)))(
 		executable,
-		['--bg', '--settings', launchSettings, '--plugin-dir', pluginDirectory, '--', prompt.trim()],
+		['--bg', '--settings', launchSettings, ...pluginArguments, '--', prompt.trim()],
 	)
-	let shortID = spawned.stdout?.match(/backgrounded\s+·\s+([0-9a-f]{8})/)?.[1]
+	const outputLines = spawned.stdout?.split(/\r?\n/) ?? []
+	const dispatchAcknowledgments = outputLines
+		.map((line) => line.match(/^backgrounded · ([0-9a-f]{8})$/)?.[1])
+		.filter((id): id is string => id !== undefined)
+	let shortID = outputLines[0]?.match(/^backgrounded · ([0-9a-f]{8})$/)?.[1]
+	if (dispatchAcknowledgments.length !== 1) shortID = undefined
+	let childSessionID: string | undefined
 	try {
 		if (spawned.stdout) write(spawned.stdout)
 		if (spawned.stderr) (dependencies.write ? write(spawned.stderr) : process.stderr.write(spawned.stderr))
-		if (spawned.error || spawned.status !== 0) {
-			throw new HierarchyAllocationError('Claude background-session startup failed.')
-		}
+		const timedOutAfterDispatch = shortID && commandTimedOut(spawned.error)
+		const dispatchAccepted = (!spawned.error && spawned.status === 0) || timedOutAfterDispatch
 		if (!shortID) throw new HierarchyAllocationError('Claude did not return an identifiable background-session ID; launch confirmation failed.')
-		const childAddress = await (dependencies.confirmChild ?? confirmChildLaunch)(executable, shortID, environment)
+		const childAddress = await (dependencies.confirmChild ?? confirmChildLaunch)(
+			executable,
+			shortID,
+			environment,
+			(sessionID) => { childSessionID = sessionID },
+		)
 		const parsedChildAddress = parseAddress(childAddress)
 		if (
-			parsedChildAddress.length !== parent.address.length + 1
-			|| !parent.address.every((segment, index) => parsedChildAddress[index] === segment)
+			parsedChildAddress.length !== parsedParentAddress.length + 1
+			|| !parsedParentAddress.every((segment, index) => parsedChildAddress[index] === segment)
 		) {
 			throw new HierarchyAllocationError('Claude background session confirmed an address outside the launcher parent lineage.')
 		}
+		if (!dispatchAccepted) throw new HierarchyAllocationError('Claude background-session startup failed.')
 		write(`Confirmed Claude background session at Zettelkasten address ${childAddress}.\n`)
 		return { parentAddress, childAddress }
 	} catch (error) {
@@ -234,10 +265,11 @@ export async function launchBackgroundSession(
 		if (!shortID || !stop(executable, shortID)) {
 			throw new HierarchyAllocationError('Claude background-session launch failed and cleanup could not be verified.')
 		}
-		if (!(dependencies.discardReceipt ?? discardLaunchReceipt)(executable, shortID, environment)) {
+		if (!childSessionID || !(dependencies.discardReceipt ?? discardLaunchReceipt)(childSessionID, environment)) {
 			throw new HierarchyAllocationError('Claude background-session launch failed and receipt cleanup could not be verified.')
 		}
-		throw error
+		const reason = error instanceof Error ? error.message : 'Claude background-session launch failed safely.'
+		throw new HierarchyAllocationError(`${reason} Native child cleanup was verified.`)
 	}
 }
 

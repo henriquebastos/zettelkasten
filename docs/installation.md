@@ -52,30 +52,38 @@ across projects. Use `--scope local` or choose **Local** only when the plugin sh
 current checkout and user. Project scope writes shared Claude settings into the current repository;
 review and commit that configuration only when the whole project should require this marketplace.
 
-### Configure the local process
+### Configure the shared namespace
 
-Obtain a namespace ID and namespace capability through a private channel. Inject them only into the
-process that starts Claude Code. For example, a POSIX shell can read the capability without placing
-its value in shell history:
+Claude prompts for three required plugin options when the plugin is enabled:
 
-```bash
-export ZETTELKASTEN_SERVICE_URL='https://zettelkasten.henriquebastos.net'
-export ZETTELKASTEN_NAMESPACE_ID='ns_...'
-read -rsp 'Namespace capability: ' ZETTELKASTEN_NAMESPACE_CAPABILITY && echo
-export ZETTELKASTEN_NAMESPACE_CAPABILITY
-claude
-unset ZETTELKASTEN_NAMESPACE_CAPABILITY
-```
+- **Zettelkasten service URL** — defaults to `https://zettelkasten.henriquebastos.net`.
+- **Namespace ID** — enter the same existing namespace ID configured for Amp, Codex, and Pi when
+  those harnesses should share one hierarchy.
+- **Namespace capability** — enter the capability corresponding to that namespace. Claude masks
+  this sensitive field and stores it in its credential store instead of user settings.
 
-For a graphical local frontend, configure its launcher or operating-system environment with the
-same three variables before starting the application. Do not place the namespace capability in a
-repository, `.claude/settings.json`, shell history, logs, or prompts. The plugin needs only the
-namespace capability; never provide a service admin token, capability-signing key, Cloudflare token,
-or Claude credential.
+Use the installed plugin's **Configure** action in `/plugin` to set or change these values. This is
+also available in graphical local Claude Code frontends that expose the same plugin configuration
+view. Do not use project or local Claude settings for these values: Claude deliberately reads plugin
+configuration only from user, managed, and explicit `--settings` sources. That prevents a checkout
+from redirecting hooks or injecting a credential.
 
-Native background children inherit the launching Claude process environment, not only the three
-Zettelkasten variables. Start Claude from a least-privileged environment and do not expose unrelated
-deployment, administration, or signing credentials to that process.
+On macOS, Claude stores the sensitive capability in Keychain. On supported POSIX platforms without
+Keychain, Claude stores it in the private `~/.claude/.credentials.json` credential file. Keep that
+file user-readable only, keep it out of backups that are not approved for credentials, and never
+copy it into a repository or another machine. The namespace ID and service URL are non-secret and
+are persisted under the plugin's user configuration in `~/.claude/settings.json`.
+
+Do not pass the capability through `--config` in a recorded shell command, where it can enter shell
+history or a process listing. Do not place it in a repository, `.claude/settings.json`, logs,
+artifacts, or prompts. The plugin needs only the namespace capability; never provide a service admin
+token, capability-signing key, Cloudflare token, or Claude credential.
+
+The installed launcher does not copy the capability into its command line, inline child settings,
+session environment file, receipt, or cache. Each native background child loads the same installed
+user configuration and credential independently. It still inherits the launching Claude process's
+ordinary environment, so start Claude from a least-privileged environment that excludes unrelated
+deployment, administration, or signing credentials.
 
 Restart Claude Code after installation if the frontend does not offer `/reload-plugins`. Confirm
 the installation without printing configuration values:
@@ -101,7 +109,7 @@ claude plugin uninstall zettelkasten-hierarchy@zettelkasten
 ```
 
 Marketplace installation copies the plugin into Claude's local cache. Do not edit that cache;
-update the marketplace instead. Plugin version `0.2.0` is pinned by its manifest, so published
+update the marketplace instead. Plugin version `0.3.0` is pinned by its manifest, so published
 changes must increment that version before existing installations can update.
 
 ### Develop from a checkout
@@ -109,8 +117,14 @@ changes must increment that version before existing installations can update.
 To exercise uncommitted plugin code without changing an installed copy:
 
 ```bash
+export ZETTELKASTEN_SERVICE_URL='https://zettelkasten.henriquebastos.net'
+export ZETTELKASTEN_NAMESPACE_ID='ns_...'
+read -rsp 'Namespace capability: ' ZETTELKASTEN_NAMESPACE_CAPABILITY && echo
+export ZETTELKASTEN_NAMESPACE_CAPABILITY
 claude --plugin-dir ./integrations/claude-code
+unset ZETTELKASTEN_NAMESPACE_CAPABILITY
 ```
 
-This development flag is temporary for that Claude process. Persistent installations should use
-the marketplace commands above.
+The process environment is a development fallback for a checkout-loaded plugin. This development
+flag is temporary for that Claude process. Persistent installations should use the marketplace
+plugin's native user configuration above.

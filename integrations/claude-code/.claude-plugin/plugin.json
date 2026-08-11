@@ -1,12 +1,34 @@
 {
   "name": "zettelkasten-hierarchy",
   "description": "Service-backed Zettelkasten addresses for Claude Code sessions, background sessions, and subagents",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": {
     "name": "Henrique Bastos",
     "url": "https://github.com/henriquebastos"
   },
   "homepage": "https://github.com/henriquebastos/zettelkasten/tree/main/integrations/claude-code",
   "repository": "https://github.com/henriquebastos/zettelkasten",
-  "license": "MIT"
+  "license": "MIT",
+  "userConfig": {
+    "service_url": {
+      "type": "string",
+      "title": "Zettelkasten service URL",
+      "description": "Shared hierarchy service used by every coding-agent integration",
+      "required": true,
+      "default": "https://zettelkasten.henriquebastos.net"
+    },
+    "namespace_id": {
+      "type": "string",
+      "title": "Namespace ID",
+      "description": "Existing namespace ID shared with the other coding-agent integrations",
+      "required": true
+    },
+    "namespace_capability": {
+      "type": "string",
+      "title": "Namespace capability",
+      "description": "Capability for the selected namespace; never use a service administration token",
+      "sensitive": true,
+      "required": true
+    }
+  }
 }

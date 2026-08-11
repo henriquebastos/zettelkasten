@@ -11,6 +11,7 @@ import {
 	displayCacheDirectory,
 	formatSessionTitle,
 	handleHook,
+	hierarchyConfiguration,
 	parseAddress,
 	storeAssignment,
 	storeLaunchReceipt,
@@ -93,6 +94,47 @@ describe('Claude address handling', () => {
 		}
 	})
 
+	test('uses complete plugin configuration without mixing it with process configuration', () => {
+		expect(hierarchyConfiguration({
+			...environment,
+			CLAUDE_PLUGIN_OPTION_SERVICE_URL: ' https://plugin.test ',
+			CLAUDE_PLUGIN_OPTION_NAMESPACE_ID: ' plugin-namespace ',
+			CLAUDE_PLUGIN_OPTION_NAMESPACE_CAPABILITY: ' plugin-secret ',
+		})).toEqual({
+			serviceURL: 'https://plugin.test',
+			namespaceID: 'plugin-namespace',
+			capability: 'plugin-secret',
+			useInstalledPlugin: true,
+		})
+		expect(hierarchyConfiguration({
+			...environment,
+			CLAUDE_PLUGIN_OPTION_NAMESPACE_ID: 'plugin-namespace',
+		})).toEqual({ serviceURL: '', namespaceID: 'plugin-namespace', capability: '', useInstalledPlugin: true })
+	})
+
+	test('fails closed with installed-plugin guidance for partial plugin configuration', async () => {
+		let calls = 0
+		const output = await handleHook(session(), {
+			...environment,
+			CLAUDE_PLUGIN_OPTION_NAMESPACE_ID: 'plugin-namespace',
+		}, {
+			request: (async () => { calls += 1; return Response.json({}) }) as typeof fetch,
+		})
+		expect(calls).toBe(0)
+		expect(output?.systemMessage).toContain('Open /plugin')
+		expect(output?.systemMessage).toContain('Configure options')
+		expect(output?.systemMessage).not.toContain('Set ZETTELKASTEN_')
+	})
+
+	test('keeps shared process configuration as the development fallback', () => {
+		expect(hierarchyConfiguration(environment)).toEqual({
+			serviceURL: 'https://service.test',
+			namespaceID: 'ns_test',
+			capability: 'secret',
+			useInstalledPlugin: false,
+		})
+	})
+
 	test('executes the marketplace artifact outside the repository package scope', async () => {
 		const directory = await mkdtemp(resolve(tmpdir(), 'zettelkasten-claude-installed-'))
 		try {
@@ -123,10 +165,12 @@ describe('Claude address handling', () => {
 		const directory = await mkdtemp(resolve(tmpdir(), 'zettelkasten-claude-env-'))
 		try {
 			const environmentFile = resolve(directory, 'environment.sh')
-			await configureLauncher(environmentFile, "session'id", "/plugin's/launcher.ts")
+			await configureLauncher(environmentFile, "session'id", '4a', "/plugin's/launcher.ts", true)
 			expect(await readFile(environmentFile, 'utf8')).toBe(
 				"export ZETTELKASTEN_CLAUDE_SESSION_ID='session'\\''id'\n"
+				+ "export ZETTELKASTEN_CLAUDE_ADDRESS='4a'\n"
 				+ "export ZETTELKASTEN_CLAUDE_LAUNCHER='/plugin'\\''s/launcher.ts'\n"
+				+ 'export ZETTELKASTEN_CLAUDE_USE_INSTALLED_PLUGIN=1\n'
 				+ 'unset ZETTELKASTEN_CLAUDE_PARENT_SESSION_ID\n',
 			)
 		} finally {
@@ -255,8 +299,9 @@ describe('Claude lifecycle hooks', () => {
 			'/v1/namespaces/ns_test/elements',
 		])
 		expect(configured).toHaveLength(1)
-		expect(configured[0]?.slice(0, 2)).toEqual(['/session-env', 'session-root'])
-		expect(configured[0]?.[2]).toEndWith('/integrations/claude-code/launcher.ts')
+		expect(configured[0]?.slice(0, 3)).toEqual(['/session-env', 'session-root', '4'])
+		expect(configured[0]?.[3]).toEndWith('/integrations/claude-code/launcher.ts')
+			expect(configured[0]?.[4]).toBe(false)
 		expect(output?.hookSpecificOutput).toMatchObject({
 			hookEventName: 'SessionStart',
 			sessionTitle: '4 Old title',
@@ -266,12 +311,18 @@ describe('Claude lifecycle hooks', () => {
 
 	test('applies a cleared session’s new canonical title on its first prompt', async () => {
 		let pendingTitle: string | undefined
+		const creates: Array<Record<string, unknown>> = []
 		const cleared = await handleHook(session({
 			session_id: 'cleared-root', source: 'clear', session_title: '4 Previous session',
-		}), environment, {
-			request: (async (input, init) => new URL(String(input)).pathname.endsWith('/resolve')
-				? Response.json({ code: 'element_not_found' }, { status: 404 })
-				: Response.json({ ...JSON.parse(String(init?.body)), address: '5' }, { status: 201 })) as typeof fetch,
+		}), { ...environment, ZETTELKASTEN_CLAUDE_PARENT_SESSION_ID: 'stale-launch-parent' }, {
+			request: (async (input, init) => {
+				if (new URL(String(input)).pathname.endsWith('/resolve')) {
+					return Response.json({ code: 'element_not_found' }, { status: 404 })
+				}
+				const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+				creates.push(body)
+				return Response.json({ ...body, address: '5' }, { status: 201 })
+			}) as typeof fetch,
 			configureLauncher: async () => {},
 			storePendingTitle: async (_directory, id, title) => {
 				expect(id).toBe('cleared-root')
@@ -280,6 +331,7 @@ describe('Claude lifecycle hooks', () => {
 		})
 		expect(cleared?.hookSpecificOutput?.sessionTitle).toBe('5')
 		expect(pendingTitle).toBe('5')
+		expect(creates).toEqual([{ key: 'claude:cleared-root', parentKey: null }])
 
 		const firstPrompt = await handleHook({
 			hook_event_name: 'UserPromptSubmit', session_id: 'cleared-root', prompt: 'Continue',
@@ -378,6 +430,21 @@ describe('Claude lifecycle hooks', () => {
 		})
 		expect(output?.hookSpecificOutput).toBeUndefined()
 	})
+
+	test.each(['clear', 'resume', 'compact'] as const)(
+		'does not hard-stop %s when stale launch provenance remains',
+		async (source) => {
+			const output = await handleHook(session({ source }), {
+				...environment,
+				ZETTELKASTEN_CLAUDE_PARENT_SESSION_ID: 'stale-parent',
+			}, {
+				request: (async () => { throw new Error('offline') }) as typeof fetch,
+			})
+			expect(output?.systemMessage).toContain('unavailable')
+			expect(output?.continue).toBeUndefined()
+			expect(output?.stopReason).toBeUndefined()
+		},
+	)
 
 	test('leaves display metadata unchanged when configuration or service is unavailable', async () => {
 		let calls = 0
