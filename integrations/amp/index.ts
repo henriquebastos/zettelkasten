@@ -10,6 +10,21 @@ import { ZettelkastenService, type ThreadSummary } from './service'
 export const description =
 	'Assigns service-backed Luhmann-style addresses to visible roots and child threads automatically.'
 
+export function catchUpFingerprint(summary: Pick<ThreadSummary, 'title' | 'parentThreadID'>): string {
+	return JSON.stringify([summary.title, summary.parentThreadID])
+}
+
+export function selectCatchUpCandidates(
+	recent: readonly ThreadSummary[],
+	cache: ReadonlyMap<`T-${string}`, string>,
+	limit = 10,
+): ThreadSummary[] {
+	return recent
+		.filter((summary) => summary.title?.trim() && cache.get(summary.id) !== catchUpFingerprint(summary))
+		.sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id))
+		.slice(0, limit)
+}
+
 export async function waitForSemanticTitle(
 	thread: Pick<PluginThread, 'title'>,
 	timeoutMs = 60_000,
@@ -86,21 +101,12 @@ export default function zettelkastenPlugin(amp: PluginAPI): void {
 		hierarchyCapability,
 	)
 	const inFlight = new Map<`T-${string}`, Promise<void>>()
+	const catchUpCache = new Map<`T-${string}`, string>()
 	const ensureAutomaticallyNumbered = async (
 		adapter: AmpPrivateThreadAdapter,
 		threadID: `T-${string}`,
-		observedTitle: string,
 		traceID: string,
 	): Promise<{ address: Address; renamed: boolean }> => {
-		let existingAddress: Address | undefined
-		try {
-			existingAddress = parseThreadTitle(observedTitle).address
-		} catch {
-			// A semantic title without an address remains eligible whenever it is observed.
-		}
-		if (existingAddress) {
-			return { address: existingAddress, renamed: false }
-		}
 		const result = await new ZettelkastenService(adapter, hierarchy).numberExisting(threadID)
 		if (result.status === 'invalid') throw new Error(result.warnings[0])
 		const latest = await adapter.getThread(threadID)
@@ -153,7 +159,7 @@ export default function zettelkastenPlugin(amp: PluginAPI): void {
 				await logDiagnostic('automatic.skipped_title_timeout', { traceID, threadID })
 				return
 			}
-			const result = await ensureAutomaticallyNumbered(adapter, threadID, title, traceID)
+			const result = await ensureAutomaticallyNumbered(adapter, threadID, traceID)
 			if (!result.renamed) {
 				await logDiagnostic('automatic.skipped_numbered_title', {
 					traceID,
@@ -191,12 +197,16 @@ export default function zettelkastenPlugin(amp: PluginAPI): void {
 		inFlight.set(threadID, task)
 		return task
 	}
-	const automaticallyCatchUp = async (summary: ThreadSummary): Promise<void> => {
+	const automaticallyCatchUp = async (summary: ThreadSummary): Promise<boolean> => {
 		const existing = inFlight.get(summary.id)
-		if (existing) return existing
+		if (existing) {
+			await existing
+			return false
+		}
 		const threadID = summary.id
 		const traceID = newTraceID()
-		const task = (async () => {
+		let succeeded = false
+		const task: Promise<void> = (async () => {
 				const startedAt = performance.now()
 				await logDiagnostic('automatic.started', {
 					traceID,
@@ -215,7 +225,8 @@ export default function zettelkastenPlugin(amp: PluginAPI): void {
 					await logDiagnostic('automatic.skipped_title_timeout', { traceID, threadID })
 					return
 				}
-				const result = await ensureAutomaticallyNumbered(adapter, threadID, title, traceID)
+				const result = await ensureAutomaticallyNumbered(adapter, threadID, traceID)
+				succeeded = true
 				await logDiagnostic(result.renamed ? 'automatic.completed' : 'automatic.skipped_numbered_title', {
 					traceID,
 					threadID,
@@ -240,6 +251,7 @@ export default function zettelkastenPlugin(amp: PluginAPI): void {
 			})
 		inFlight.set(threadID, task)
 		await task
+		return succeeded
 	}
 	let catchUp: Promise<void> | undefined
 	let lastCatchUpAt = 0
@@ -251,19 +263,16 @@ export default function zettelkastenPlugin(amp: PluginAPI): void {
 			await logDiagnostic('recent.scan.started', { traceID })
 			const adapter = new AmpPrivateThreadAdapter(amp, undefined, amp.$, traceID)
 			const recent = await adapter.listRecentThreads()
-			let candidateCount = 0
-			for (const summary of recent
-				.sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id))) {
-				try {
-					parseThreadTitle(summary.title ?? '')
-					continue
-				} catch {
-					candidateCount += 1
+			const candidates = selectCatchUpCandidates(recent, catchUpCache)
+			for (const summary of candidates) {
+				if (await automaticallyCatchUp(summary)) {
+					catchUpCache.delete(summary.id)
+					catchUpCache.set(summary.id, catchUpFingerprint(summary))
+					while (catchUpCache.size > 300) catchUpCache.delete(catchUpCache.keys().next().value!)
 				}
-				await automaticallyCatchUp(summary)
 			}
 			lastCatchUpAt = Date.now()
-			await logDiagnostic('recent.scan.completed', { traceID, threadCount: recent.length, candidateCount })
+			await logDiagnostic('recent.scan.completed', { traceID, threadCount: recent.length, candidateCount: candidates.length })
 		})()
 			.catch(async (error) => {
 				await logDiagnostic('recent.scan.failed', {

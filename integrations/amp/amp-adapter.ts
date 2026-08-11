@@ -169,10 +169,16 @@ export class AmpPrivateThreadAdapter implements ThreadAdapter {
 		}
 	}
 
-	async setTitle(threadID: `T-${string}`, title: string): Promise<void> {
+	async setTitle(threadID: `T-${string}`, title: string, expectedCurrentTitle?: string): Promise<void> {
 		await logDiagnostic('thread.rename.started', { traceID: this.traceID, threadID })
 		let lastError = ''
 		for (let attempt = 0; attempt < 3; attempt += 1) {
+			if (expectedCurrentTitle !== undefined) {
+				const latest = await this.getThread(threadID)
+				if (latest?.title !== expectedCurrentTitle) {
+					throw new Error(`Thread ${threadID} changed title before rename; automatic numbering will retry later`)
+				}
+			}
 			try {
 				const result = await this.shell`amp threads rename ${threadID} ${title}`
 				await logDiagnostic('thread.rename.attempt', {

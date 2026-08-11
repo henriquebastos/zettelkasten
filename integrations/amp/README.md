@@ -15,14 +15,21 @@ allocation, collision repair, rebuild, or fallback.
 
 A successful `agent.end` waits up to one minute for Amp's semantic title and numbers an unnumbered
 thread. `session.start` provides the same behavior for a completed thread whose executor did not run
-the plugin. Lifecycle events also trigger a once-per-minute catch-up over exactly the newest
-archived-inclusive 50-thread API page. Catch-up does not scan full history.
+the plugin. Lifecycle events also trigger a once-per-minute catch-up over the newest archived-inclusive
+50-thread API page. Each pass processes at most ten newest records whose listed title or effective
+parent changed since a successful process-local reconciliation; empty titles are skipped. The bounded
+cache is only a load optimization, never persistent or an allocation authority. Catch-up does not scan full history.
 
 Effective ancestry prefers Amp's structural `parentThreadID` and otherwise uses the first user
 message's `meta.fromExecutorThreadID`. Ancestors are assigned parent-first, cycles are rejected, and
 the title is compared again before writing. Service-returned root and direct-child lineages are
-strictly validated. Automatic handling leaves every existing parseable prefix untouched. Repeated
-events for the same thread share one in-flight operation.
+strictly validated. Parseable prefixes are verified against the service and reconciled to its
+canonical address while preserving the semantic title. Repeated events for the same thread share
+one in-flight operation.
+
+A leading parseable address token followed by a space is reserved Zettelkasten display metadata,
+not semantic title text. When the service returns a different canonical address, reconciliation
+replaces that token and preserves only the parsed semantic title.
 
 ## Creation
 
@@ -43,14 +50,16 @@ integration. It uses:
 
 Private API responses are strictly validated. Requests are serialized process-wide and HTTP 429
 responses are retried up to five times using `Retry-After` or exponential backoff. The plugin
-requires `AMP_API_KEY` and never logs it.
+requires `AMP_API_KEY` and never logs it. Immediately before each numbering rename attempt, the
+adapter re-fetches the exact thread and checks its expected title. Amp's rename command has no CAS,
+so a change between that check and the command remains an unavoidable best-effort race.
 
 ## Policy
 
 - Remote service assignments are the sole source of numbering and concurrency correctness.
 - Unavailable, rejected, conflicting, or malformed service responses leave titles unchanged.
-- Explicit numbering validates existing prefixes against effective ancestry; automatic numbering
-  leaves parseable prefixes untouched.
+- Explicit and automatic numbering verify and reconcile parseable prefixes against the service and
+  effective ancestry.
 - No local repair/rebuild commands or full-history snapshots remain.
 
 ## Tests
