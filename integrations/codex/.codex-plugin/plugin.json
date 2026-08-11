@@ -1,0 +1,18 @@
+{
+  "name": "zettelkasten-hierarchy",
+  "version": "0.1.0",
+  "description": "Service-backed Zettelkasten addresses for Codex threads and native subagents",
+  "author": {
+    "name": "Henrique Bastos",
+    "url": "https://github.com/henriquebastos"
+  },
+  "homepage": "https://github.com/henriquebastos/zettelkasten/tree/main/integrations/codex",
+  "repository": "https://github.com/henriquebastos/zettelkasten",
+  "license": "MIT",
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "Zettelkasten hierarchy",
+    "shortDescription": "Canonical hierarchy addresses for Codex threads",
+    "category": "Productivity"
+  }
+}

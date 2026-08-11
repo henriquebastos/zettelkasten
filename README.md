@@ -11,7 +11,7 @@ root and places harness clients under `integrations/`.
 | Cloudflare Worker allocation service | Implemented |
 | Amp User Plugin | Implemented |
 | Claude Code plugin | Implemented |
-| Codex | Not implemented; agent brief only |
+| Codex plugin | Implemented |
 | Pi | Not implemented; agent brief only |
 
 The service is available at **https://zettelkasten.henriquebastos.net**. The deployment's
@@ -96,8 +96,8 @@ repository. Authenticate subscription CLIs directly inside a persistent integrat
 user credentials remain local to that orb across pause and resume.
 
 `bun run check` runs Worker type checking and tests, Amp integration tests and a bundle with
-`@ampcode/plugin` externalized, and Claude Code integration type checking and tests. Deployment uses
-three credentials with separate boundaries:
+`@ampcode/plugin` externalized, and Claude Code and Codex integration type checking and tests.
+Deployment uses three credentials with separate boundaries:
 
 - `CLOUDFLARE_API_TOKEN`: Wrangler deployment access only.
 - `SERVICE_ADMIN_TOKEN`: Worker secret for namespace lifecycle operations.

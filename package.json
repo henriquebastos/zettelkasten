@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "bun run service:check && bun run amp:check && bun run claude:check",
+    "check": "bun run service:check && bun run amp:check && bun run claude:check && bun run codex:check",
     "service:check": "bun run typecheck && bun run test",
     "amp:check": "bun run amp:test && bun run amp:build",
     "amp:test": "bun test integrations/amp/*.test.ts",
@@ -11,6 +11,9 @@
     "claude:check": "bun run claude:typecheck && bun run claude:test",
     "claude:typecheck": "node_modules/node/bin/node node_modules/typescript/bin/tsc --noEmit --strict --target ES2023 --module NodeNext --moduleResolution NodeNext --types node --allowImportingTsExtensions --erasableSyntaxOnly integrations/claude-code/index.ts integrations/claude-code/launcher.ts",
     "claude:test": "bun test integrations/claude-code/*.test.ts",
+    "codex:check": "bun run codex:typecheck && bun run codex:test",
+    "codex:typecheck": "node_modules/node/bin/node node_modules/typescript/bin/tsc --noEmit --strict --target ES2023 --module NodeNext --moduleResolution NodeNext --types node --allowImportingTsExtensions --erasableSyntaxOnly integrations/codex/index.ts integrations/codex/configure.ts integrations/codex/launcher.ts integrations/codex/deferred-name.ts",
+    "codex:test": "bun test integrations/codex/*.test.ts",
     "deploy": "node_modules/node/bin/node node_modules/wrangler/bin/wrangler.js deploy",
     "dev": "node_modules/node/bin/node node_modules/wrangler/bin/wrangler.js dev",
     "test": "node_modules/node/bin/node node_modules/vitest/vitest.mjs run",

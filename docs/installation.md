@@ -16,8 +16,8 @@ stores or environment injection available to the deployment and harness.
    `ZETTELKASTEN_SERVICE_URL`, `ZETTELKASTEN_NAMESPACE_ID`,
    `ZETTELKASTEN_NAMESPACE_CAPABILITY`, and the Amp-required `AMP_API_KEY` into the Amp process.
    Run the plugin tests and bundle command documented in its README before enabling it.
-4. Install and configure the Claude Code plugin as described below. Codex and Pi are not yet
-   implemented; their directories remain investigation briefs.
+4. Install and configure the Claude Code and Codex plugins as described below. Pi is not yet
+   implemented; its directory remains an investigation brief.
 
 Configure multiple harnesses with the same namespace to share a hierarchy. Provision different
 namespaces and capabilities when isolation is required.
@@ -128,3 +128,79 @@ unset ZETTELKASTEN_NAMESPACE_CAPABILITY
 The process environment is a development fallback for a checkout-loaded plugin. This development
 flag is temporary for that Claude process. Persistent installations should use the marketplace
 plugin's native user configuration above.
+
+## Install in Codex
+
+The plugin supports Codex CLI 0.147.0 and Codex frontends that share its local plugin installation,
+hook, app-server, and history surfaces. Add the GitHub marketplace and install at user scope:
+
+```bash
+codex plugin marketplace add https://github.com/henriquebastos/zettelkasten.git
+INSTALL_RESULT="$(codex plugin add zettelkasten-hierarchy@zettelkasten --json)"
+```
+
+The plugin then appears in Codex's installed plugin list and in supported graphical plugin views.
+Restart the frontend, open `/hooks`, inspect the installed `SessionStart`, `SubagentStart`, and
+`SubagentStop` commands, and trust their exact definitions. Codex hashes hook definitions and
+requires another review after they change.
+
+Configure the same existing namespace used by the other harnesses from a trusted terminal. This
+The install result contains the installed path; `configure.ts` masks capability input and never
+places it in argv. Codex 0.147.0 does not include `installedPath` in `plugin list --json`:
+
+```bash
+PLUGIN_ROOT="$(printf '%s' "$INSTALL_RESULT" | node -e '
+let s=""; process.stdin.on("data", c => s += c); process.stdin.on("end", () => {
+  const path = JSON.parse(s).installedPath
+  if (!path) process.exit(1)
+  process.stdout.write(path)
+})')"
+node "$PLUGIN_ROOT/configure.ts"
+unset PLUGIN_ROOT INSTALL_RESULT
+```
+
+The script writes the service URL and namespace ID to
+`$CODEX_HOME/zettelkasten/config.json` and the namespace capability separately to
+`$CODEX_HOME/zettelkasten/capability`; without `CODEX_HOME`, it uses `~/.codex/zettelkasten`.
+The directory is mode `0700` and both files are mode `0600`. Partial file configuration fails
+closed and never mixes with environment values. Keep both files out of Git, backups not approved
+for credentials, prompts, logs, and artifacts. Provide only a namespace capability, never an admin,
+signing, Cloudflare, OpenAI, or other harness credential.
+
+These file modes protect against other OS users and accidental disclosure, not Codex tools running
+as the same OS user. Codex 0.147.0 has no plugin credential-store API that isolates a capability
+from that tool boundary. Prefer a dedicated least-privilege Codex namespace for untrusted workloads.
+Using the shared namespace is supported, but means accepting that same-user access boundary.
+
+Configured roots, resumes, forks, and nested native subagents receive remote addresses in Codex's
+native thread name. To create a separate full Codex root as a child, use the launcher command added
+to the session context. It reads Codex's own `CODEX_THREAD_ID`; the model never propagates identity.
+Because creation writes Codex's user-local history, approve execution of that exact launcher outside
+the tool sandbox; Node and `codex` must be available on that elevated process's `PATH`. The launcher
+preallocates and names the child, sends its task over stdin to
+`codex exec resume`, and suppresses machine event output containing opaque IDs. The child remains in
+normal Codex history and is resumable by native ID.
+
+Root allocation failures stop the turn before model output. Codex 0.147.0 does not let a
+`SubagentStart` hook stop a child model: blocking JSON, `continue: false`, exit 2, generic failure,
+and timeout were all tested and still ran the child. On subagent reconciliation failure, the plugin
+therefore emits a warning and creates neither a canonical title nor a local assignment. Use service
+availability controls outside Codex if unnumbered subagent execution must be prohibited.
+
+Handled root failures use an internal deadline so the hook can return blocking JSON before its
+20-second host timeout. A hook process crash, forced kill, or host timeout still fails open in Codex
+0.147.0. The launcher can recover an ambiguous remote allocation once it knows the native ID, but
+Codex has no idempotency key for `thread/start`; a crash or lost start response can orphan an
+unassigned native root.
+
+Update or remove the installation with:
+
+```bash
+codex plugin marketplace upgrade zettelkasten
+codex plugin add zettelkasten-hierarchy@zettelkasten --json
+codex plugin remove zettelkasten-hierarchy@zettelkasten
+codex plugin marketplace remove zettelkasten
+```
+
+See [`integrations/codex/README.md`](../integrations/codex/README.md) for runtime boundaries and
+checkout-development configuration.
