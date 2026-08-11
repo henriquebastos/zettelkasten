@@ -39,9 +39,9 @@ seconds, and a clean minimal login shell check showing repository Node and the p
 `codex`, and `pi` commands. Setup must validate all 53 vendored Ariad files and its package digest
 before installing CLIs. Setup links the pinned repository Node into `~/.local/bin` because Amp's
 generated shell environment owns the final `PATH`; this intentionally makes Node 22 the default
-inside the dedicated project orb. Resume performs no installation. For phone-operated subscription
-authentication, use `docs/oauth-from-phone.md`; never improvise credential-file transfer through
-the repository, logs, artifacts, or chat.
+inside the dedicated project orb. Resume performs no installation. Authenticate subscription CLIs
+only at runtime in that persistent orb; never transfer credential files through the repository,
+logs, or artifacts.
 
 `bun run deploy` deploys the Worker with Wrangler. Deployment requires an injected
 `CLOUDFLARE_API_TOKEN`; `SERVICE_ADMIN_TOKEN` and `CAPABILITY_SIGNING_KEY` are Worker secrets and
