@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "zettelkasten",
+  "description": "Service-backed Zettelkasten hierarchy integrations for Claude Code",
+  "owner": {
+    "name": "Henrique Bastos",
+    "url": "https://github.com/henriquebastos"
+  },
+  "plugins": [
+    {
+      "name": "zettelkasten-hierarchy",
+      "source": "./integrations/claude-code",
+      "description": "Canonical Zettelkasten addresses for Claude Code sessions, background sessions, and subagents",
+      "category": "productivity",
+      "homepage": "https://github.com/henriquebastos/zettelkasten/tree/main/integrations/claude-code",
+      "repository": "https://github.com/henriquebastos/zettelkasten",
+      "license": "MIT"
+    }
+  ]
+}

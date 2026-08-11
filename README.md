@@ -10,7 +10,7 @@ root and places harness clients under `integrations/`.
 | --- | --- |
 | Cloudflare Worker allocation service | Implemented |
 | Amp User Plugin | Implemented |
-| Claude Code | Not implemented; agent brief only |
+| Claude Code plugin | Implemented |
 | Codex | Not implemented; agent brief only |
 | Pi | Not implemented; agent brief only |
 
@@ -95,8 +95,9 @@ user at runtime; setup does not authenticate, and credentials must never be stor
 repository. Authenticate subscription CLIs directly inside a persistent integration orb; their
 user credentials remain local to that orb across pause and resume.
 
-`bun run check` runs Worker type checking and tests, then Amp integration tests and a bundle with
-`@ampcode/plugin` externalized. Deployment uses three credentials with separate boundaries:
+`bun run check` runs Worker type checking and tests, Amp integration tests and a bundle with
+`@ampcode/plugin` externalized, and Claude Code integration type checking and tests. Deployment uses
+three credentials with separate boundaries:
 
 - `CLOUDFLARE_API_TOKEN`: Wrangler deployment access only.
 - `SERVICE_ADMIN_TOKEN`: Worker secret for namespace lifecycle operations.

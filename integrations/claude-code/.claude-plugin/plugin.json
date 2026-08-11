@@ -1,0 +1,12 @@
+{
+  "name": "zettelkasten-hierarchy",
+  "description": "Service-backed Zettelkasten addresses for Claude Code sessions, background sessions, and subagents",
+  "version": "0.2.0",
+  "author": {
+    "name": "Henrique Bastos",
+    "url": "https://github.com/henriquebastos"
+  },
+  "homepage": "https://github.com/henriquebastos/zettelkasten/tree/main/integrations/claude-code",
+  "repository": "https://github.com/henriquebastos/zettelkasten",
+  "license": "MIT"
+}

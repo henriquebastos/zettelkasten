@@ -1,0 +1,31 @@
+{
+  "description": "Allocate and display canonical Zettelkasten addresses",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/index.ts"],
+            "timeout": 10,
+            "statusMessage": "Resolving Zettelkasten address"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/index.ts"],
+            "timeout": 10,
+            "statusMessage": "Resolving subagent Zettelkasten address"
+          }
+        ]
+      }
+    ]
+  }
+}
