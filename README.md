@@ -92,7 +92,8 @@ Fresh Amp orbs verify the vendored `using-ariad` package from the
 The harness uses repository Node 22.23.2. Run `.agents/setup` to provision it and
 `.agents/resume` for a fast availability check. Authentication and API keys are supplied by each
 user at runtime; setup does not authenticate, and credentials must never be stored in this
-repository.
+repository. For a persistent integration orb operated from a phone, follow the
+[agent-assisted OAuth runbook](docs/oauth-from-phone.md).
 
 `bun run check` runs Worker type checking and tests, then Amp integration tests and a bundle with
 `@ampcode/plugin` externalized. Deployment uses three credentials with separate boundaries:

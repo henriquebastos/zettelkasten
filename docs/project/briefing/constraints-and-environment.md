@@ -23,7 +23,8 @@
 - The public repository and private Amp Personal Plugins repository have different ownership
   boundaries. Do not treat this repository as the installed personal plugin configuration.
 - CLI authentication is user-provided at runtime and is never performed by orb setup or stored in
-  this repository.
+  this repository. In the dedicated integration orb, agents follow `docs/oauth-from-phone.md` and
+  stop at every human browser-approval checkpoint.
 
 ## Environment
 
