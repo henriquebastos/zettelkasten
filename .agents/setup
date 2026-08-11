@@ -97,21 +97,41 @@ install_cli '@openai/codex' '0.147.0' codex
 install_cli '@earendil-works/pi-coding-agent' '0.84.1' pi ignore
 
 profile_marker='# zettelkasten development harness PATH'
+profile_end_marker='# end zettelkasten development harness PATH'
 touch "$HOME/.bash_profile"
-if ! grep -Fqx "$profile_marker" "$HOME/.bash_profile"; then
-  cat >> "$HOME/.bash_profile" <<EOF
+python3 - "$HOME/.bash_profile" "$profile_marker" "$profile_end_marker" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+start_marker = sys.argv[2]
+end_marker = sys.argv[3]
+lines = path.read_text(encoding="utf-8").splitlines()
+if start_marker in lines:
+    start = lines.index(start_marker)
+    if end_marker in lines[start + 1:]:
+        end = lines.index(end_marker, start + 1) + 1
+    else:
+        # Migrate the original block, which ended at its first `esac`.
+        end = lines.index("esac", start + 1) + 1
+    del lines[start:end]
+path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+PY
+cat >> "$HOME/.bash_profile" <<EOF
 
 $profile_marker
 case "\$PWD/" in
   "$repo_root/"*)
-    if [[ -z "\${ZETTELKASTEN_HARNESS_PATH_ACTIVE:-}" ]]; then
-      export ZETTELKASTEN_HARNESS_PATH_ACTIVE=1
+    case ":\$PATH:" in
+      *:"$repo_root/node_modules/node/bin":*) ;;
+      *)
       export PATH="$repo_root/node_modules/node/bin:$local_prefix/bin:\$PATH"
-    fi
+        ;;
+    esac
     ;;
 esac
+$profile_end_marker
 EOF
-fi
 
 export PATH="$repo_root/node_modules/node/bin:$local_prefix/bin:$PATH"
 [[ "$(node --version)" == 'v22.23.2' ]]
