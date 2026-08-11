@@ -150,6 +150,22 @@ export class Hierarchy extends DurableObject<Env> {
     })
   }
 
+  rename(name: string): OperationResult<NamespaceMetadata> {
+    return this.ctx.storage.transactionSync(() => {
+      const meta = this.meta()
+      if (!meta) return failure(404, 'namespace_not_found')
+      this.ctx.storage.sql.exec('UPDATE namespace_meta SET name = ? WHERE singleton = 1', name)
+      return {
+        ok: true,
+        value: {
+          namespaceID: meta.namespace_id,
+          name,
+          state: meta.state,
+        },
+      }
+    })
+  }
+
   adminMetadata(): OperationResult<NamespaceMetadata> {
     const meta = this.meta()
     if (!meta) return failure(404, 'namespace_not_found')
@@ -371,7 +387,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
 
   const adminMatch = url.pathname.match(
-    /^\/v1\/admin\/namespaces\/(ns_[0-9a-f-]+)\/(imports|activate|disable|token:rotate)$/,
+    /^\/v1\/admin\/namespaces\/(ns_[0-9a-f-]+)\/(imports|activate|disable|rename|token:rotate)$/,
   )
   if (adminMatch) {
     if (!isAdmin(request, env)) return json({ code: 'unauthorized' }, 401)
@@ -391,6 +407,11 @@ async function route(request: Request, env: Env): Promise<Response> {
 
     const body = await readObject(request)
     if (!body.ok) return resultResponse(body)
+    if (action === 'rename') {
+      const name = validNamespaceName(body.value.name)
+      if (!name) return json({ code: 'invalid_namespace_name' }, 400)
+      return resultResponse(await target.rename(name))
+    }
     const elements = validateImport(body.value.elements)
     if (!elements) return json({ code: 'invalid_import' }, 400)
     return resultResponse(await target.importElements(elements))

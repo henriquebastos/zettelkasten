@@ -3,7 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "bun run typecheck && bun run test",
+    "check": "bun run service:check && bun run amp:check",
+    "service:check": "bun run typecheck && bun run test",
+    "amp:check": "bun run amp:test && bun run amp:build",
+    "amp:test": "bun test integrations/amp/*.test.ts",
+    "amp:build": "bun build integrations/amp/index.ts --outdir /tmp/zettelkasten-amp-build --external @ampcode/plugin",
     "deploy": "node_modules/node/bin/node node_modules/wrangler/bin/wrangler.js deploy",
     "dev": "node_modules/node/bin/node node_modules/wrangler/bin/wrangler.js dev",
     "test": "node_modules/node/bin/node node_modules/vitest/vitest.mjs run",

@@ -63,6 +63,29 @@ describe('namespaced hierarchy service', () => {
     expect((await createElement(body, 'new-token', null)).status).toBe(201)
   })
 
+  it('renames an active namespace without changing its identity or assignments', async () => {
+    const namespace = await activeNamespace('old-name')
+    const created = await element(await createElement(namespace, 'amp:T-1', null))
+
+    const renamed = await admin(
+      `/v1/admin/namespaces/${namespace.namespaceID}/rename`,
+      { name: '  ai-threads  ' },
+    )
+
+    expect(renamed.status).toBe(200)
+    expect(await renamed.json()).toEqual({
+      namespaceID: namespace.namespaceID,
+      name: 'ai-threads',
+      state: 'active',
+    })
+    const resolved = await post(
+      `${elementsPath(namespace)}/resolve`,
+      { key: 'amp:T-1' },
+      namespace.capabilityToken,
+    )
+    expect(await element(resolved)).toEqual(created)
+  })
+
   it('allocates and renders a hierarchy from opaque cross-system keys', async () => {
     const namespace = await activeNamespace('shared-research')
 

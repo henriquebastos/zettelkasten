@@ -1,3 +1,8 @@
 .dev.vars
+.env
+.env.*
+!.env.example
+integrations/*/.env
+integrations/*/credentials.local.ts
 .wrangler/
 node_modules/
