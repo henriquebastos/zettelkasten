@@ -1,27 +1,135 @@
-# Agent installation guide
+# Installation guide
 
-Do not paste secrets into prompts, source files, commits, or logs. Perform these steps using secret
-stores or environment injection available to the deployment and harness.
+Do not paste secrets into prompts, source files, commits, shell command arguments, or logs. Perform
+secret entry in a trusted interactive terminal and keep generated credential files out of Git and
+unapproved backups.
 
-1. Deploy the root Worker with Wrangler. Provide `CLOUDFLARE_API_TOKEN` only to Wrangler and set
-   `SERVICE_ADMIN_TOKEN` and `CAPABILITY_SIGNING_KEY` as Worker secrets. The public endpoint is
-   `https://zettelkasten.henriquebastos.net`; the deployment's `workers.dev` hostname is a fallback.
-2. With the service admin credential, call `POST /v1/admin/namespaces`, retain the returned
-   namespace ID and capability in a secret manager, optionally import an existing hierarchy
-   parent-first, then call `POST /v1/admin/namespaces/{namespaceID}/activate`. Never give an
-   integration the service admin credential.
-3. For Amp, copy `integrations/amp` into a **private personal User Plugins repository**. That private
-   repository remains the installed configuration's source of truth; pull public implementation
-   updates into it rather than committing personal configuration here. Inject
-   `ZETTELKASTEN_SERVICE_URL`, `ZETTELKASTEN_NAMESPACE_ID`,
-   `ZETTELKASTEN_NAMESPACE_CAPABILITY`, and the Amp-required `AMP_API_KEY` into the Amp process.
-   Run the plugin tests and bundle command documented in its README before enabling it.
-4. Install and configure the Claude Code, Codex, and Pi integrations as described below.
+## Choose a service
 
-Configure multiple harnesses with the same namespace to share a hierarchy. Provision different
-namespaces and capabilities when isolation is required.
+### Use Henrique's hosted service
 
-## Install in Claude Code
+`https://zettelkasten.henriquebastos.net` is a maintained deployment, and its unauthenticated
+`GET /health` endpoint currently returns `{"ok":true}`. It does **not** provide public namespace
+registration or a public provisioning channel. Use it only if its operator has already given you a
+namespace ID and its corresponding capability through a private route. Never request or exchange a
+capability in a public issue.
+
+If you do not already have hosted credentials, self-host the service. Installing a harness plugin
+alone does not create a namespace.
+
+### Self-host on Cloudflare Workers
+
+Prerequisites are a Cloudflare account with Workers enabled, Bun 1.3.10, and Wrangler authentication
+authorized to deploy Workers and create SQLite Durable Objects. The portable default config uses
+the authenticated account, enables its `workers.dev` endpoint, and declares `Hierarchy` through
+Wrangler's current SQLite Durable Object `exports` lifecycle. It has no maintainer account ID or
+custom-domain route.
+
+```bash
+git clone https://github.com/henriquebastos/zettelkasten.git
+cd zettelkasten
+bun install --frozen-lockfile
+bun run check
+./node_modules/.bin/wrangler login
+```
+
+Set two independent Worker secrets during the first deployment. Generate separate random values in
+a password manager; do not reuse a Cloudflare, harness, or namespace credential. This uploads code
+and both secrets together, then removes the temporary user-only file:
+
+```bash
+(
+set -euo pipefail
+secrets_file="$(mktemp)"
+chmod 600 "$secrets_file"
+trap 'rm -f "$secrets_file"; unset SERVICE_ADMIN_TOKEN CAPABILITY_SIGNING_KEY' EXIT
+read -rsp 'Service admin token: ' SERVICE_ADMIN_TOKEN && echo
+read -rsp 'Capability signing key: ' CAPABILITY_SIGNING_KEY && echo
+printf 'SERVICE_ADMIN_TOKEN=%s\nCAPABILITY_SIGNING_KEY=%s\n' \
+  "$SERVICE_ADMIN_TOKEN" "$CAPABILITY_SIGNING_KEY" > "$secrets_file"
+./node_modules/.bin/wrangler deploy --secrets-file "$secrets_file"
+rm -f "$secrets_file"
+unset SERVICE_ADMIN_TOKEN CAPABILITY_SIGNING_KEY
+trap - EXIT
+)
+```
+
+Wrangler prints the resulting `workers.dev` URL; use that exact origin as `SERVICE_URL`. Confirm it
+without credentials:
+
+```bash
+curl --fail-with-body "$SERVICE_URL/health"
+```
+
+Create the namespace with the service admin token in the `Authorization` header. Use a client or
+secret-manager workflow that does not put the token in argv or print the response. For example, this
+prompted script writes the response directly to a user-only file:
+
+```bash
+python3 - "$SERVICE_URL" <<'PY'
+import getpass, json, os, pathlib, sys, urllib.request
+
+request = urllib.request.Request(
+    sys.argv[1].rstrip('/') + '/v1/admin/namespaces',
+    data=json.dumps({'name': 'shared-coding-agents'}).encode(),
+    headers={
+        'Authorization': 'Bearer ' + getpass.getpass('Service admin token: '),
+        'Content-Type': 'application/json',
+    },
+    method='POST',
+)
+with urllib.request.urlopen(request) as response:
+    directory = pathlib.Path.home() / '.config' / 'zettelkasten'
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    directory.chmod(0o700)
+    path = directory / 'namespace.private.json'
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, 'wb') as output:
+        output.write(response.read())
+PY
+```
+
+The script refuses to overwrite an existing credential file. Keep
+`~/.config/zettelkasten/namespace.private.json` out of unapproved backups. Its shape is:
+
+```json
+{
+  "namespaceID": "ns_...",
+  "name": "shared-coding-agents",
+  "state": "initializing",
+  "capabilityToken": "..."
+}
+```
+
+Retain `namespaceID` as configuration and `capabilityToken` as a secret. While the namespace is
+`initializing`, an operator may import an existing hierarchy parent-first with
+`POST /v1/admin/namespaces/{namespaceID}/imports`. Then activate it with
+`POST /v1/admin/namespaces/{namespaceID}/activate`. Activation closes imports and enables normal
+allocation. All namespace lifecycle requests use the service admin token; harnesses receive only the
+namespace capability.
+
+To add a custom domain, add your own Wrangler custom-domain route in a private or deployment-specific
+configuration after the `workers.dev` deployment works. The committed
+`wrangler.production.template.jsonc` demonstrates this repository's production shape without an
+account ID or domain. It is not a deployable config: `scripts/deploy-production.ts` validates it
+against the portable config and materializes an ignored, user-only temporary config from the private
+deployment environment.
+
+## Install harness integrations
+
+Configure multiple harnesses with the same service URL, namespace ID, and corresponding capability
+to share a hierarchy. Provision different namespaces and capabilities when isolation is required.
+
+### Install in Amp
+
+Amp loads project plugins from `.amp/plugins/*.ts` and user-local plugins from
+`~/.config/amp/plugins/*.ts`. Because this integration has relative modules, install its bundled
+single-file form. Follow the exact build, configuration, reload, private Personal Plugins repository,
+and update instructions in [`integrations/amp/README.md`](../integrations/amp/README.md#install).
+Inject the namespace values and Amp's required `AMP_API_KEY` into the Amp process; never store them
+in this public repository.
+
+### Install in Claude Code
 
 The plugin supports Claude Code 2.1.227 running with Node 22.23.2 on `PATH` in a POSIX environment
 such as Linux or macOS. It works in the Claude Code CLI and in local Claude Code frontends that load
@@ -128,7 +236,7 @@ The process environment is a development fallback for a checkout-loaded plugin. 
 flag is temporary for that Claude process. Persistent installations should use the marketplace
 plugin's native user configuration above.
 
-## Install in Codex
+### Install in Codex
 
 The plugin supports Codex CLI 0.147.0 and Codex frontends that share its local plugin installation,
 hook, app-server, and history surfaces. Add the GitHub marketplace and install at user scope:
@@ -143,9 +251,10 @@ Restart the frontend, open `/hooks`, inspect the installed `SessionStart`, `Suba
 `SubagentStop` commands, and trust their exact definitions. Codex hashes hook definitions and
 requires another review after they change.
 
-Configure the same existing namespace used by the other harnesses from a trusted terminal. This
-The install result contains the installed path; `configure.ts` masks capability input and never
-places it in argv. Codex 0.147.0 does not include `installedPath` in `plugin list --json`:
+Configure the same existing namespace used by the other harnesses from a trusted terminal. The
+installation command's JSON result contains the installed path; `configure.ts` masks capability
+input and never places it in argv. Codex 0.147.0 does not include `installedPath` in
+`plugin list --json`:
 
 ```bash
 PLUGIN_ROOT="$(printf '%s' "$INSTALL_RESULT" | node -e '
@@ -204,7 +313,7 @@ codex plugin marketplace remove zettelkasten
 See [`integrations/codex/README.md`](../integrations/codex/README.md) for runtime boundaries and
 checkout-development configuration.
 
-## Install in Pi
+### Install in Pi
 
 Pi 0.84.1 on POSIX platforms can install this repository directly as a user package. Native Windows
 is unsupported because the integration requires Unix credential modes and no-follow session-file

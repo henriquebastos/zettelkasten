@@ -1,11 +1,37 @@
 # Service-backed Zettelkasten thread numbering
 
-> **Status:** this is the only implemented client integration in this repository.
-
 Configure the plugin process with `ZETTELKASTEN_SERVICE_URL`, `ZETTELKASTEN_NAMESPACE_ID`, and
 `ZETTELKASTEN_NAMESPACE_CAPABILITY`. The service URL defaults to the public custom hostname; the
 namespace values intentionally have no defaults. Missing configuration is safe at import time and
 causes a clear error before any allocation request.
+
+## Install
+
+Amp loads TypeScript plugins from `.amp/plugins/*.ts` in a project or
+`~/.config/amp/plugins/*.ts` for the current user. This integration has relative modules, so bundle
+it into one installable file rather than copying only `index.ts`:
+
+```bash
+git clone https://github.com/henriquebastos/zettelkasten.git
+cd zettelkasten
+bun install --frozen-lockfile
+mkdir -p ~/.config/amp/plugins
+bun build integrations/amp/index.ts \
+  --outfile ~/.config/amp/plugins/zettelkasten-hierarchy.ts \
+  --external @ampcode/plugin
+```
+
+Start Amp from a trusted environment that injects `ZETTELKASTEN_SERVICE_URL`,
+`ZETTELKASTEN_NAMESPACE_ID`, `ZETTELKASTEN_NAMESPACE_CAPABILITY`, and the Amp-required
+`AMP_API_KEY`, then run **plugins: reload** or restart Amp. Confirm loading with
+`amp plugins list`; never print the environment values.
+
+For an Amp-hosted personal installation shared across the user's Amp environments, use
+`amp plugins repositories` to clone the private Personal Plugins repository, build the same single
+file into that repository's plugin directory, commit it there, and ask before pushing. The private
+repository—not this public upstream—owns the installed plugin source. Credentials remain exclusively
+in runtime secret injection and must never be committed, even to a private repository. Rebuild from
+a reviewed upstream revision to update the plugin.
 
 This Amp plugin exposes three commands: **Number current thread**, **Create child**, and **Create
 root**. All hierarchy assignments come from the remote hierarchy service. There is no local

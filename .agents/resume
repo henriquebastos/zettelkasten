@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export PATH="$repo_root/node_modules/node/bin:$HOME/.local/bin:$PATH"
+export PATH="$HOME/.local/bin:$repo_root/node_modules/node/bin:$PATH"
 
 for command in node claude codex pi; do
   command -v "$command" >/dev/null || { printf 'Missing required command: %s\n' "$command" >&2; exit 1; }

@@ -4,10 +4,17 @@ The allocation Worker and namespace lifecycle API are implemented and deployed a
 `https://zettelkasten.henriquebastos.net` (with the Workers hostname as fallback). The Worker uses
 SQLite Durable Objects and has automated type and behavior checks.
 
-The Amp, Claude Code, and Codex integrations are implemented and tested from `integrations/amp`,
-`integrations/claude-code`, and `integrations/codex`. Amp's deployable personal configuration lives
-in a private Amp Personal Plugins repository, not here. This public repository remains the reusable
-implementation upstream and must not acquire personal credentials or configuration.
+The default Wrangler configuration is a portable self-host target with required-secret validation
+and no maintainer account or route. The synchronized production template also contains no concrete
+identifier. The maintainer command materializes an ignored temporary config from private Amp Project
+environment values, validates it with a dry-run, deploys strictly, and cleans it up. Hosted namespace
+provisioning is private rather than public self-service.
+
+The Amp, Claude Code, Codex, and Pi integrations are implemented and tested from
+`integrations/amp`, `integrations/claude-code`, `integrations/codex`, and `integrations/pi`. Amp's
+deployable personal configuration lives in a private Amp Personal Plugins repository, not here.
+This public repository remains the reusable implementation upstream and must not acquire personal
+credentials or configuration.
 
 Claude Code main sessions are hierarchy roots and visible subagents are direct children, using
 opaque native IDs. A session-scoped launcher can also create independent native background sessions

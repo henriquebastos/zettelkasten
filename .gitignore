@@ -4,5 +4,7 @@
 !.env.example
 integrations/*/.env
 integrations/*/credentials.local.ts
+.amp/
 .wrangler/
+wrangler.production.generated.*.jsonc
 node_modules/

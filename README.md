@@ -14,8 +14,9 @@ root and places harness clients under `integrations/`.
 | Codex plugin | Implemented |
 | Pi package | Implemented |
 
-The service is available at **https://zettelkasten.henriquebastos.net**. The deployment's
-`zettelkasten-allocator.<account-subdomain>.workers.dev` address remains the Cloudflare fallback.
+Henrique's deployment is healthy at **https://zettelkasten.henriquebastos.net**. It does not offer
+public namespace self-service: it is usable only with a namespace and capability already issued by
+its operator. Everyone else can deploy an independent instance from this repository.
 
 ## Architecture
 
@@ -79,6 +80,16 @@ bun run check
 bun run dev
 ```
 
+The default `wrangler.jsonc` is portable: it deploys `zettelkasten-allocator` to the authenticated
+Cloudflare account's `workers.dev` domain and uses Wrangler's declarative SQLite Durable Object
+export. It contains no maintainer account or route. See the [installation guide](docs/installation.md)
+for hosted-use, self-hosting, namespace provisioning, and harness installation paths.
+
+The production topology is retained as `wrangler.production.template.jsonc` with a domain
+placeholder and no account identifier. Maintainer deployment materializes an ignored temporary
+configuration from private Amp Project environment values; generated configuration is never a
+repository source of truth.
+
 ### Development harness
 
 Fresh Amp orbs verify the vendored `using-ariad` package from the
@@ -97,7 +108,7 @@ user credentials remain local to that orb across pause and resume.
 
 `bun run check` runs Worker type checking and tests, Amp integration tests and a bundle with
 `@ampcode/plugin` externalized, and Claude Code, Codex, and Pi integration type checking and tests.
-Deployment uses three credentials with separate boundaries:
+Self-hosted deployment uses three credentials with separate boundaries:
 
 - `CLOUDFLARE_API_TOKEN`: Wrangler deployment access only.
 - `SERVICE_ADMIN_TOKEN`: Worker secret for namespace lifecycle operations.

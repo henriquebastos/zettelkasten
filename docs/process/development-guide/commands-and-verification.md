@@ -7,7 +7,7 @@
 bun install --frozen-lockfile
 .agents/setup
 
-# complete verification (service and Amp integration)
+# complete verification (service and all four integrations)
 bun run check
 
 # focused checks
@@ -19,9 +19,13 @@ bun run claude:check
 bun run codex:check
 bun run pi:check
 
-# local Worker and production deployment
+# local Worker and portable self-host deployment
 bun run dev
 bun run deploy
+
+# maintainer deployment only; generates a private config from the project environment
+bun run deploy:production:dry-run
+bun run deploy:production
 
 # lifecycle and patch hygiene
 .agents/resume
@@ -46,9 +50,15 @@ inside the dedicated project orb. Resume performs no installation. Authenticate 
 only at runtime in that persistent orb; never transfer credential files through the repository,
 logs, or artifacts.
 
-`bun run deploy` deploys the Worker with Wrangler. Deployment requires an injected
-`CLOUDFLARE_API_TOKEN`; `SERVICE_ADMIN_TOKEN` and `CAPABILITY_SIGNING_KEY` are Worker secrets and
-must be managed separately. Namespace capabilities are application credentials and must never be
-substituted for deployment or administration credentials. The private Amp Personal Plugins
-repository is the source of truth for an installed Amp plugin; validate and deliberately sync
-public integration changes there rather than deploying personal configuration from this monorepo.
+`bun run deploy` deploys a portable self-hosted Worker with Wrangler. `bun run deploy:production`
+is reserved for the maintainer deployment. Configure `CLOUDFLARE_ACCOUNT_ID` and
+`ZETTELKASTEN_PRODUCTION_DOMAIN` as private Amp Project environment values and
+`CLOUDFLARE_API_TOKEN` as an Amp Project secret. The production command validates the committed
+template against `wrangler.jsonc`, creates a mode-`0600` ignored config containing only the injected
+domain, runs a Wrangler dry-run, deploys with `--strict`, and removes generated files. Wrangler reads
+the account ID and API token directly from its restricted subprocess environment; neither enters
+the generated config. `SERVICE_ADMIN_TOKEN` and `CAPABILITY_SIGNING_KEY` remain Worker secrets
+managed separately in Cloudflare. Namespace capabilities are application credentials and must never
+be substituted for deployment or administration credentials. The private Amp Personal Plugins
+repository is the source of truth for an installed Amp plugin; validate and deliberately sync public
+integration changes there rather than deploying personal configuration from this monorepo.

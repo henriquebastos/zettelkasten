@@ -124,9 +124,9 @@ $profile_marker
 case "\$PWD/" in
   "$repo_root/"*)
     case ":\$PATH:" in
-      *:"$repo_root/node_modules/node/bin":*) ;;
+      *:"$local_prefix/bin":"$repo_root/node_modules/node/bin":*) ;;
       *)
-      export PATH="$repo_root/node_modules/node/bin:$local_prefix/bin:\$PATH"
+      export PATH="$local_prefix/bin:$repo_root/node_modules/node/bin:\$PATH"
         ;;
     esac
     ;;
@@ -134,7 +134,7 @@ esac
 $profile_end_marker
 EOF
 
-export PATH="$repo_root/node_modules/node/bin:$local_prefix/bin:$PATH"
+export PATH="$local_prefix/bin:$repo_root/node_modules/node/bin:$PATH"
 [[ "$(node --version)" == 'v22.23.2' ]]
 [[ "$(claude --version)" == *'2.1.227'* ]]
 [[ "$(codex --version)" == *'0.147.0'* ]]
