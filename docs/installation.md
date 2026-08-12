@@ -16,8 +16,7 @@ stores or environment injection available to the deployment and harness.
    `ZETTELKASTEN_SERVICE_URL`, `ZETTELKASTEN_NAMESPACE_ID`,
    `ZETTELKASTEN_NAMESPACE_CAPABILITY`, and the Amp-required `AMP_API_KEY` into the Amp process.
    Run the plugin tests and bundle command documented in its README before enabling it.
-4. Install and configure the Claude Code and Codex plugins as described below. Pi is not yet
-   implemented; its directory remains an investigation brief.
+4. Install and configure the Claude Code, Codex, and Pi integrations as described below.
 
 Configure multiple harnesses with the same namespace to share a hierarchy. Provision different
 namespaces and capabilities when isolation is required.
@@ -204,3 +203,55 @@ codex plugin marketplace remove zettelkasten
 
 See [`integrations/codex/README.md`](../integrations/codex/README.md) for runtime boundaries and
 checkout-development configuration.
+
+## Install in Pi
+
+Pi 0.84.1 on POSIX platforms can install this repository directly as a user package. Native Windows
+is unsupported because the integration requires Unix credential modes and no-follow session-file
+reads; use WSL, Linux, or macOS.
+
+```bash
+pi install git:github.com/henriquebastos/zettelkasten
+```
+
+Review the package first: Pi extensions execute with the user's full permissions. The package
+manifest loads `integrations/pi/index.ts`. Confirm installation with `pi list`, then restart Pi.
+
+Configure the shared namespace from a trusted terminal. For the GitHub installation above, Pi's
+documented clone location is:
+
+```bash
+node ~/.pi/agent/git/github.com/henriquebastos/zettelkasten/integrations/pi/configure.ts
+```
+
+For a local checkout installed with `pi install /absolute/path/to/zettelkasten`, run the same
+`integrations/pi/configure.ts` from that checkout. Enter the namespace ID used by the other
+harnesses and only its namespace capability. The capability is masked and does not enter argv.
+
+Configuration is stored under `$PI_CODING_AGENT_DIR/zettelkasten`, or
+`~/.pi/agent/zettelkasten` by default. The directory is mode `0700`; `config.json` and the separate
+`capability` file are mode `0600`. These permissions prevent other-user and accidental access, not
+same-user Pi tools or extensions. Prefer a dedicated least-privilege Pi namespace for untrusted
+workloads, and never provide an administration or provider credential.
+
+Every persistent root, resume, and native fork receives a canonical address in its Pi session name.
+Use `/zk-child <task>` to create and enter a separately resumable native child. This is foreground
+session navigation: Pi replaces the current TUI with the child rather than running it concurrently.
+The parent must have completed its first persisted assistant turn because Pi does not write a fresh
+session's JSONL file before then. `--no-session` is unsupported because it cannot preserve durable
+parentage.
+
+On hierarchy failure, ordinary input is handled before model startup, and compaction plus summarized
+tree navigation are cancelled. Pi has no universal provider veto: another installed extension can
+call a provider directly, and handled print/JSON input can still exit zero. No title or local
+assignment is invented.
+
+Update or remove the package with:
+
+```bash
+pi update git:github.com/henriquebastos/zettelkasten
+pi remove git:github.com/henriquebastos/zettelkasten
+```
+
+See [`integrations/pi/README.md`](../integrations/pi/README.md) for the native lifecycle and security
+boundaries.

@@ -15,6 +15,9 @@ bun run typecheck
 bun run test
 bun run amp:test
 bun run amp:build
+bun run claude:check
+bun run codex:check
+bun run pi:check
 
 # local Worker and production deployment
 bun run dev
@@ -28,7 +31,7 @@ git diff --check
 ## Verification
 
 Run `bun run check` and `git diff --check` before handoff. `bun run check` type-checks and tests the
-Worker, tests the Amp integration, and bundles the Amp entrypoint with `@ampcode/plugin`
+Worker, tests all four harness integrations, and bundles the Amp entrypoint with `@ampcode/plugin`
 externalized. For integration changes, also run the focused harness tests and demonstrate the
 native lifecycle behavior using non-production namespace credentials; pass means stable native
 keys, exact ancestry, canonical returned addresses, idempotent retries, and unchanged metadata on

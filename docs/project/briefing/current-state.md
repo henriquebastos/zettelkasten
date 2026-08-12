@@ -25,8 +25,7 @@ authoritative because Codex does not store a native parent for independent roots
 requires explicit execution outside the tool sandbox to write Codex's own history. Configuration is
 user-local with a separate user-only capability file and can share the same namespace as Amp and
 Claude. Codex 0.147.0 cannot isolate that file from model shell tools running as the same OS user, so
-a dedicated least-privilege namespace is preferable for untrusted Codex workloads. Pi remains an
-investigation brief and is the next harness to validate. Ariad 0.2.1 is
+a dedicated least-privilege namespace is preferable for untrusted Codex workloads. Ariad 0.2.1 is
 vendored as the project's delivery method and the key project documents are adopted.
 
 Handled Codex root allocation failures are fail-closed before model work; a hook process crash,
@@ -35,3 +34,12 @@ advisory/context boundary: runtime probes confirmed that all documented and proc
 forms still allow the child model to run. Failed subagent reconciliation therefore warns and leaves
 the thread unnumbered without inventing a local assignment; deployments requiring strict subagent
 blocking need an enforcement boundary outside Codex.
+
+Pi 0.84.1 on POSIX platforms supports persistent roots, resumes, and native forks using stable
+session UUIDs and exact parent-session headers. The package recursively creates remote ancestors,
+persists canonical session names, and
+uses Pi's input-handled contract to stop ordinary model work when initialization fails. `/zk-child`
+uses Pi's supported foreground session replacement API to create a separately resumable child with
+exact native parentage; Pi has no native background-subagent hierarchy. Ephemeral sessions and
+unsaved fresh parents are rejected. Pi's user-only capability file has the same same-UID tool-access
+boundary as Codex, and co-installed extensions remain outside the integration's provider gate.

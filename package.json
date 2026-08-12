@@ -2,8 +2,16 @@
   "name": "zettelkasten-allocator",
   "private": true,
   "type": "module",
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "./integrations/pi/index.ts"
+    ]
+  },
   "scripts": {
-    "check": "bun run service:check && bun run amp:check && bun run claude:check && bun run codex:check",
+    "check": "bun run service:check && bun run amp:check && bun run claude:check && bun run codex:check && bun run pi:check",
     "service:check": "bun run typecheck && bun run test",
     "amp:check": "bun run amp:test && bun run amp:build",
     "amp:test": "bun test integrations/amp/*.test.ts",
@@ -14,6 +22,9 @@
     "codex:check": "bun run codex:typecheck && bun run codex:test",
     "codex:typecheck": "node_modules/node/bin/node node_modules/typescript/bin/tsc --noEmit --strict --target ES2023 --module NodeNext --moduleResolution NodeNext --types node --allowImportingTsExtensions --erasableSyntaxOnly integrations/codex/index.ts integrations/codex/configure.ts integrations/codex/launcher.ts integrations/codex/deferred-name.ts",
     "codex:test": "bun test integrations/codex/*.test.ts",
+    "pi:check": "bun run pi:typecheck && bun run pi:test",
+    "pi:typecheck": "node_modules/node/bin/node node_modules/typescript/bin/tsc --noEmit --strict --target ES2023 --module NodeNext --moduleResolution NodeNext --types node --allowImportingTsExtensions --erasableSyntaxOnly integrations/pi/index.ts integrations/pi/configure.ts",
+    "pi:test": "bun test integrations/pi/*.test.ts",
     "deploy": "node_modules/node/bin/node node_modules/wrangler/bin/wrangler.js deploy",
     "dev": "node_modules/node/bin/node node_modules/wrangler/bin/wrangler.js dev",
     "test": "node_modules/node/bin/node node_modules/vitest/vitest.mjs run",
