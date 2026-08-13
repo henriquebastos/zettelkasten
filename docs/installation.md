@@ -195,7 +195,10 @@ deployment, administration, or signing credentials.
 Restart Claude Code after installation if the frontend does not offer `/reload-plugins`. Worktrees
 created after plugin initialization, including isolated subagent worktrees, use
 `<address>-<native-description>` labels while retaining Claude's native location, branch, and
-included-file behavior. Root CLI `claude --worktree` creation precedes plugin hook registration in
+included-file behavior. Claude Code has no worktree location setting, so the native
+`<main-checkout>/.claude/worktrees` root is used; your `worktree.baseRef`, `worktree.sparsePaths`,
+and `worktree.symlinkDirectories` settings are read from Claude's own layered configuration and
+applied. Root CLI `claude --worktree` creation precedes plugin hook registration in
 2.1.227 and retains its native name. Confirm
 the installation without printing configuration values:
 
@@ -220,7 +223,7 @@ claude plugin uninstall zettelkasten-hierarchy@zettelkasten
 ```
 
 Marketplace installation copies the plugin into Claude's local cache. Do not edit that cache;
-update the marketplace instead. Plugin version `0.3.0` is pinned by its manifest, so published
+update the marketplace instead. Plugin version `0.5.0` is pinned by its manifest, so published
 changes must increment that version before existing installations can update.
 
 ### Develop from a checkout

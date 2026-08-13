@@ -26,8 +26,10 @@ because Claude's supported hooks do not expose the source session ID needed for 
 
 After plugin initialization, Claude's blocking `WorktreeCreate` hook creates managed Git worktrees
 under the main checkout's `.claude/worktrees` with `<address>-<native-description>` directory
-labels. It preserves the pinned CLI's branch, origin-main-with-local-HEAD-fallback, and
-`.worktreeinclude` projections.
+labels. It preserves the pinned CLI's branch, including its `+` encoding of a slashed description,
+and `.worktreeinclude` projections. Claude exposes no worktree location setting, so its native root
+is used unchanged; `worktree.baseRef`, `worktree.sparsePaths`, and `worktree.symlinkDirectories` are
+read from Claude's layered configuration—policy always winning—and applied during creation.
 The label is stale-safe display metadata and is never used as identity. Isolated subagent creation
 exposes only the root session ID at that point, so its worktree displays the root session address
 rather than inventing an unavailable child identity. Root CLI `--worktree` creation happens before

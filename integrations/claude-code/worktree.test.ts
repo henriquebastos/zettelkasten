@@ -1,10 +1,15 @@
 import { describe, expect, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
-import { createManagedWorktree, formatWorktreeLabel } from './worktree.ts'
+import {
+	createManagedWorktree,
+	formatWorktreeLabel,
+	nativeBranchName,
+	readNativeWorktreeSettings,
+} from './worktree.ts'
 
 const environment = {
 	ZETTELKASTEN_SERVICE_URL: 'https://service.test',
@@ -60,7 +65,7 @@ describe('Claude managed worktree display labels', () => {
 			await writeFile(resolve(root, 'tracked'), 'dirty source change\n')
 			const path = await createManagedWorktree({
 				hook_event_name: 'WorktreeCreate', session_id: 'opaque-session', cwd: root, name: 'cleanup-description',
-			}, environment, { request: service('4') })
+			}, environment, { settingsSources: [], request: service('4') })
 			expect(path).toBe(resolve(root, '.claude', 'worktrees', '4-cleanup-description'))
 			expect(git(path, 'branch', '--show-current').trim()).toBe('worktree-cleanup-description')
 			expect(await readFile(resolve(path, 'tracked'), 'utf8')).toBe('committed\n')
@@ -90,7 +95,7 @@ describe('Claude managed worktree display labels', () => {
 			git(root, 'commit', '-qam', 'local only')
 			const path = await createManagedWorktree({
 				hook_event_name: 'WorktreeCreate', session_id: 'opaque', cwd: root, name: 'remote-base',
-			}, environment, { request: service('4') })
+			}, environment, { settingsSources: [], request: service('4') })
 			expect(git(path, 'rev-parse', 'HEAD').trim()).toBe(remoteHead)
 		} finally { await rm(parent, { recursive: true, force: true }) }
 	})
@@ -100,10 +105,10 @@ describe('Claude managed worktree display labels', () => {
 		try {
 			const first = await createManagedWorktree({
 				hook_event_name: 'WorktreeCreate', session_id: 'same-session', cwd: root, name: 'first-task',
-			}, environment, { request: service('4') })
+			}, environment, { settingsSources: [], request: service('4') })
 			const second = await createManagedWorktree({
 				hook_event_name: 'WorktreeCreate', session_id: 'same-session', cwd: first, name: 'second-task',
-			}, environment, { request: service('4') })
+			}, environment, { settingsSources: [], request: service('4') })
 			expect([first, second]).toEqual([
 				resolve(root, '.claude', 'worktrees', '4-first-task'),
 				resolve(root, '.claude', 'worktrees', '4-second-task'),
@@ -147,9 +152,89 @@ describe('Claude managed worktree display labels', () => {
 		const root = await repository()
 		try {
 			const input = { hook_event_name: 'WorktreeCreate' as const, session_id: 'opaque', cwd: root, name: 'collision' }
-			await createManagedWorktree(input, environment, { request: service('4') })
-			await expect(createManagedWorktree(input, environment, { request: service('4') })).rejects.toThrow()
+			await createManagedWorktree(input, environment, { settingsSources: [], request: service('4') })
+			await expect(createManagedWorktree(input, environment, { settingsSources: [], request: service('4') })).rejects.toThrow()
 			expect(git(root, 'worktree', 'list', '--porcelain').match(/^worktree /gm)?.length).toBe(2)
 		} finally { await rm(root, { recursive: true, force: true }) }
+	})
+})
+
+describe('Claude native worktree settings', () => {
+	test('encodes a slashed description into Claude native branch form rather than a slashed branch', () => {
+		expect(nativeBranchName('cleanup-description')).toBe('worktree-cleanup-description')
+		expect(nativeBranchName('feature/auth')).toBe('worktree-feature+auth')
+		expect(() => nativeBranchName('../escape')).toThrow('invalid native worktree description')
+	})
+
+	test('applies the highest-precedence layer per key and ignores unreadable or unsafe values', async () => {
+		const directory = await mkdtemp(resolve(tmpdir(), 'zettelkasten-claude-settings-'))
+		try {
+			const user = resolve(directory, 'user.json')
+			const project = resolve(directory, 'project.json')
+			const policy = resolve(directory, 'policy.json')
+			await writeFile(user, JSON.stringify({ worktree: { baseRef: 'head', symlinkDirectories: ['node_modules'] } }))
+			await writeFile(project, JSON.stringify({ worktree: { sparsePaths: ['src'] } }))
+			await writeFile(policy, JSON.stringify({ worktree: { baseRef: 'fresh' } }))
+			expect(await readNativeWorktreeSettings([user, project, resolve(directory, 'absent.json'), policy]))
+				.toEqual({ symlinkDirectories: ['node_modules'], sparsePaths: ['src'], baseRef: 'fresh' })
+
+			const malformed = resolve(directory, 'malformed.json')
+			const unsafe = resolve(directory, 'unsafe.json')
+			await writeFile(malformed, 'not json at all')
+			await writeFile(unsafe, JSON.stringify({ worktree: { symlinkDirectories: ['../outside'], baseRef: 'sideways' } }))
+			expect(await readNativeWorktreeSettings([malformed, unsafe]))
+				.toEqual({ symlinkDirectories: [], sparsePaths: [], baseRef: 'fresh' })
+		} finally { await rm(directory, { recursive: true, force: true }) }
+	})
+
+	test('honors baseRef head by branching from local HEAD instead of fetched origin/main', async () => {
+		const parent = await mkdtemp(resolve(tmpdir(), 'zettelkasten-claude-baseref-'))
+		try {
+			const origin = resolve(parent, 'origin.git')
+			git(parent, 'init', '-q', '--bare', 'origin.git')
+			const root = await repository()
+			const settings = resolve(parent, 'settings.json')
+			await writeFile(settings, JSON.stringify({ worktree: { baseRef: 'head' } }))
+			try {
+				git(root, 'remote', 'add', 'origin', origin)
+				git(root, 'push', '-q', 'origin', 'HEAD:main')
+				await writeFile(resolve(root, 'tracked'), 'unpushed local work\n')
+				git(root, 'commit', '-aqm', 'unpushed')
+				const path = await createManagedWorktree({
+					hook_event_name: 'WorktreeCreate', session_id: 'opaque-session', cwd: root, name: 'from-head',
+				}, environment, { settingsSources: [settings], request: service('4') })
+				expect(await readFile(resolve(path, 'tracked'), 'utf8')).toBe('unpushed local work\n')
+			} finally { await rm(root, { recursive: true, force: true }) }
+		} finally { await rm(parent, { recursive: true, force: true }) }
+	})
+
+	test('applies sparsePaths and symlinkDirectories the way native worktree creation does', async () => {
+		const root = await repository()
+		const directory = await mkdtemp(resolve(tmpdir(), 'zettelkasten-claude-native-'))
+		try {
+			await mkdir(resolve(root, 'src'))
+			await mkdir(resolve(root, 'docs'))
+			await writeFile(resolve(root, 'src', 'app.ts'), 'export const app = 1\n')
+			await writeFile(resolve(root, 'docs', 'guide.md'), '# guide\n')
+			git(root, 'add', '.')
+			git(root, 'commit', '-qm', 'trees')
+			await mkdir(resolve(root, 'node_modules'))
+			await writeFile(resolve(root, 'node_modules', 'installed.txt'), 'shared\n')
+			const settings = resolve(directory, 'settings.json')
+			await writeFile(settings, JSON.stringify({
+				worktree: { sparsePaths: ['src'], symlinkDirectories: ['node_modules', 'absent-directory'] },
+			}))
+			const path = await createManagedWorktree({
+				hook_event_name: 'WorktreeCreate', session_id: 'opaque-session', cwd: root, name: 'native-settings',
+			}, environment, { settingsSources: [settings], request: service('4') })
+			expect(await Bun.file(resolve(path, 'src', 'app.ts')).exists()).toBe(true)
+			expect(await Bun.file(resolve(path, 'docs', 'guide.md')).exists()).toBe(false)
+			expect(await readFile(resolve(path, 'node_modules', 'installed.txt'), 'utf8')).toBe('shared\n')
+			expect((await lstat(resolve(path, 'node_modules'))).isSymbolicLink()).toBe(true)
+			expect(await Bun.file(resolve(path, 'absent-directory')).exists()).toBe(false)
+		} finally {
+			await rm(root, { recursive: true, force: true })
+			await rm(directory, { recursive: true, force: true })
+		}
 	})
 })

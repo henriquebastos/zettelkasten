@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
 import { constants } from 'node:fs'
-import { copyFile, lstat, mkdir } from 'node:fs/promises'
+import { copyFile, lstat, mkdir, readFile, symlink } from 'node:fs/promises'
+import { homedir, platform } from 'node:os'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
@@ -37,6 +38,68 @@ interface CommandResult {
 interface WorktreeDependencies {
 	request?: typeof fetch
 	runGit?: (cwd: string, args: string[]) => Promise<CommandResult>
+	settingsSources?: string[]
+}
+
+/**
+ * The subset of Claude Code's native `worktree` settings that changes how a worktree is
+ * materialized. Claude Code 2.1.227 exposes no worktree location setting, so the plugin keeps
+ * Claude's native `<main-checkout>/.claude/worktrees` root and follows only these three.
+ */
+interface NativeWorktreeSettings {
+	symlinkDirectories: string[]
+	sparsePaths: string[]
+	baseRef: 'fresh' | 'head'
+}
+
+function relativeDirectories(value: unknown): string[] | undefined {
+	if (!Array.isArray(value)) return undefined
+	const directories: string[] = []
+	for (const entry of value) {
+		if (typeof entry !== 'string') return undefined
+		const candidate = entry.trim()
+		if (candidate.length === 0 || isAbsolute(candidate)) return undefined
+		if (candidate.split('/').some((segment) => segment === '..' || segment === '.')) return undefined
+		directories.push(candidate)
+	}
+	return directories
+}
+
+/**
+ * Claude Code's settings precedence, lowest first. Policy settings always win; a repository can
+ * never redirect a higher-trust layer. Unreadable or malformed layers are skipped so worktree
+ * creation never depends on unrelated settings being valid.
+ */
+export function nativeSettingsSources(repositoryRoot: string, environment: NodeJS.ProcessEnv = process.env): string[] {
+	const configDirectory = environment.CLAUDE_CONFIG_DIR?.trim()
+	const userRoot = configDirectory && isAbsolute(configDirectory) ? configDirectory : resolve(homedir(), '.claude')
+	const policyRoot = platform() === 'darwin' ? '/Library/Application Support/ClaudeCode' : '/etc/claude-code'
+	return [
+		resolve(userRoot, 'settings.json'),
+		resolve(repositoryRoot, '.claude', 'settings.json'),
+		resolve(repositoryRoot, '.claude', 'settings.local.json'),
+		resolve(policyRoot, 'managed-settings.json'),
+	]
+}
+
+export async function readNativeWorktreeSettings(sources: string[]): Promise<NativeWorktreeSettings> {
+	const settings: NativeWorktreeSettings = { symlinkDirectories: [], sparsePaths: [], baseRef: 'fresh' }
+	for (const source of sources) {
+		let worktree: Record<string, unknown>
+		try {
+			const parsed = JSON.parse(await readFile(source, 'utf8')) as { worktree?: unknown }
+			if (!parsed || typeof parsed !== 'object' || !parsed.worktree || typeof parsed.worktree !== 'object') continue
+			worktree = parsed.worktree as Record<string, unknown>
+		} catch {
+			continue
+		}
+		const symlinkDirectories = relativeDirectories(worktree.symlinkDirectories)
+		if (symlinkDirectories) settings.symlinkDirectories = symlinkDirectories
+		const sparsePaths = relativeDirectories(worktree.sparsePaths)
+		if (sparsePaths) settings.sparsePaths = sparsePaths
+		if (worktree.baseRef === 'fresh' || worktree.baseRef === 'head') settings.baseRef = worktree.baseRef
+	}
+	return settings
 }
 
 const executeFile = promisify(execFile)
@@ -67,6 +130,37 @@ export function formatWorktreeLabel(address: Address, nativeName: string): strin
 	const canonical = address.join('')
 	const slug = nativeName.replaceAll('/', '-')
 	return slug.startsWith(`${canonical}-`) ? slug : `${canonical}-${slug}`
+}
+
+/** Claude Code encodes a slashed description as `worktree-<a>+<b>`; a slashed branch is not native. */
+export function nativeBranchName(nativeName: string): string {
+	validateNativeName(nativeName)
+	return `worktree-${nativeName.replaceAll('/', '+')}`
+}
+
+/**
+ * Claude's native `worktree.symlinkDirectories` behavior: share the main checkout's copy instead of
+ * duplicating it. Missing sources and existing destinations are skipped rather than failing creation.
+ */
+async function linkSharedDirectories(
+	repositoryRoot: string,
+	worktreePath: string,
+	directories: string[],
+): Promise<void> {
+	for (const relativePath of directories) {
+		const source = resolve(repositoryRoot, relativePath)
+		const destination = resolve(worktreePath, relativePath)
+		try {
+			if (!(await lstat(source)).isDirectory()) continue
+		} catch {
+			continue
+		}
+		await mkdir(dirname(destination), { recursive: true })
+		try { await symlink(source, destination, 'dir') }
+		catch (error) {
+			if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
+		}
+	}
 }
 
 async function allocateWorktreeAddress(
@@ -152,22 +246,31 @@ export async function createManagedWorktree(
 	if (!repositoryRoot || !isAbsolute(repositoryRoot)) {
 		throw new HierarchyAllocationError('Claude Code did not expose a supported main Git worktree.')
 	}
+	const settings = await readNativeWorktreeSettings(
+		dependencies.settingsSources ?? nativeSettingsSources(repositoryRoot),
+	)
 	const worktreeRoot = resolve(repositoryRoot, '.claude', 'worktrees')
 	const worktreePath = resolve(worktreeRoot, formatWorktreeLabel(address, input.name))
-	const branch = `worktree-${input.name}`
+	const branch = nativeBranchName(input.name)
 	await mkdir(worktreeRoot, { recursive: true })
 	let created = false
 	try {
 		let base = 'HEAD'
-		try {
-			await git(input.cwd, ['fetch', 'origin', 'main'])
-			await git(input.cwd, ['rev-parse', '--verify', 'refs/remotes/origin/main'])
-			base = 'origin/main'
-		} catch {
-			// Claude's native fallback when origin/main is absent or unavailable.
+		if (settings.baseRef === 'fresh') {
+			try {
+				await git(input.cwd, ['fetch', 'origin', 'main'])
+				await git(input.cwd, ['rev-parse', '--verify', 'refs/remotes/origin/main'])
+				base = 'origin/main'
+			} catch {
+				// Claude's native fallback when origin/main is absent or unavailable.
+			}
 		}
 		await git(input.cwd, ['worktree', 'add', '-b', branch, worktreePath, base])
 		created = true
+		if (settings.sparsePaths.length > 0) {
+			await git(worktreePath, ['sparse-checkout', 'set', '--cone', '--', ...settings.sparsePaths])
+		}
+		await linkSharedDirectories(repositoryRoot, worktreePath, settings.symlinkDirectories)
 		await copyIncludedIgnoredFiles(repositoryRoot, worktreePath, git)
 		return worktreePath
 	} catch (error) {

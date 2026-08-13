@@ -42,10 +42,26 @@ normal remote allocation, then creates the Git worktree at Claude's native main-
 <main-checkout>/.claude/worktrees/<address>-<native-description>
 ```
 
-It preserves the pinned CLI's `worktree-<native-description>` branch, fetched `origin/main` baseline
-with local `HEAD` fallback, and `.worktreeinclude` copying of selected ignored regular files. Dirty tracked files are not
+It preserves the pinned CLI's `worktree-<native-description>` branch, encoding a slashed description
+as `worktree-<a>+<b>` exactly as the native CLI does, and `.worktreeinclude` copying of selected
+ignored regular files. Dirty tracked files are not
 copied, source symlinks are skipped, and existing destination files are not overwritten. Invocation
 from another linked worktree still uses the main checkout's native managed-worktree directory.
+
+Claude Code 2.1.227 exposes no worktree location setting: its native root is
+`<main-checkout>/.claude/worktrees`, so the plugin uses that root rather than inventing one. The
+three native settings that do change how a worktree is materialized are read from Claude's own
+layered configuration—user, project, local, then policy, with policy always winning—and applied:
+
+- `worktree.baseRef`: `fresh` (default) uses the fetched `origin/main` baseline with local `HEAD`
+  fallback; `head` branches from local `HEAD` so unpushed work is present.
+- `worktree.sparsePaths`: applied with `git sparse-checkout set --cone`.
+- `worktree.symlinkDirectories`: symlinked from the main checkout; absent sources and existing
+  destinations are skipped.
+
+Absolute paths and `..` segments in either directory list are rejected, and an unreadable or
+malformed settings layer is skipped so worktree creation never depends on unrelated settings being
+valid.
 
 The path is cleanup-oriented display metadata only. The plugin never reads it as session identity
 or parentage, never chases later session-title changes, and permits several worktrees to carry the
