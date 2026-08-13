@@ -192,7 +192,11 @@ user configuration and credential independently. It still inherits the launching
 ordinary environment, so start Claude from a least-privileged environment that excludes unrelated
 deployment, administration, or signing credentials.
 
-Restart Claude Code after installation if the frontend does not offer `/reload-plugins`. Confirm
+Restart Claude Code after installation if the frontend does not offer `/reload-plugins`. Worktrees
+created after plugin initialization, including isolated subagent worktrees, use
+`<address>-<native-description>` labels while retaining Claude's native location, branch, and
+included-file behavior. Root CLI `claude --worktree` creation precedes plugin hook registration in
+2.1.227 and retains its native name. Confirm
 the installation without printing configuration values:
 
 ```bash
@@ -201,7 +205,7 @@ claude plugin details zettelkasten-hierarchy@zettelkasten
 ```
 
 Inside an interactive session, `/plugin` should show `zettelkasten-hierarchy` enabled and `/hooks`
-should show its `SessionStart`, `UserPromptSubmit`, and `SubagentStart` hooks. `UserPromptSubmit`
+should show its `WorktreeCreate`, `SessionStart`, `UserPromptSubmit`, and `SubagentStart` hooks. `UserPromptSubmit`
 performs only the one-shot canonical retitle after `/clear` and otherwise returns no output. A
 configured session receives its canonical address in the title. It can create an independent, native
 child session with the launcher command provided in its initial context; that child remains visible
@@ -300,6 +304,11 @@ Handled root failures use an internal deadline so the hook can return blocking J
 0.147.0. The launcher can recover an ambiguous remote allocation once it knows the native ID, but
 Codex has no idempotency key for `thread/start`; a crash or lost start response can orphan an
 unassigned native root.
+
+Codex desktop worktrees remain managed by the desktop app. Although the app supports a configurable
+worktree root, handoff, snapshots, restoration, and cleanup, the 0.147.0 CLI/app-server API exposes
+none of those lifecycle operations to this plugin. The integration does not rename app-owned
+worktrees after startup or infer thread identity from their paths.
 
 Update or remove the installation with:
 

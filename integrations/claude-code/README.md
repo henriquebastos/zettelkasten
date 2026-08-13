@@ -31,6 +31,40 @@ display surfaces.
 - Resumes repeat the same key and parent and rely on service idempotency.
 - Internal agent events without a visible `agent_type` are ignored.
 
+## Managed worktree labels
+
+After plugin initialization, Claude Code 2.1.227 fires blocking `WorktreeCreate` with the stable
+root session ID and its native generated or user-supplied worktree description. This covers
+in-session creation such as isolated subagents and background sessions. The plugin uses that ID for
+normal remote allocation, then creates the Git worktree at Claude's native main-checkout location:
+
+```text
+<main-checkout>/.claude/worktrees/<address>-<native-description>
+```
+
+It preserves the pinned CLI's `worktree-<native-description>` branch, fetched `origin/main` baseline
+with local `HEAD` fallback, and `.worktreeinclude` copying of selected ignored regular files. Dirty tracked files are not
+copied, source symlinks are skipped, and existing destination files are not overwritten. Invocation
+from another linked worktree still uses the main checkout's native managed-worktree directory.
+
+The path is cleanup-oriented display metadata only. The plugin never reads it as session identity
+or parentage, never chases later session-title changes, and permits several worktrees to carry the
+same session address with different descriptions. Configuration, service, lineage, invalid-name,
+collision, and Git failures abort creation; no local address or random fallback is invented.
+
+For isolated subagents, Claude exposes the root `session_id` during `WorktreeCreate` and exposes the
+separate `agent_id` only later at `SubagentStart`. Their worktree label therefore carries the root
+session address plus Claude's native agent description. The plugin does not parse the generated
+description to manufacture child identity. Runtime probing also found a completed isolated
+subagent that emitted no documented `WorktreeRemove` and remained registered, so cleanup events are
+treated as best-effort lifecycle rather than hierarchy truth.
+
+Root CLI `claude --worktree` is a different startup boundary. Running both inline and installed
+plugin probes showed that Claude creates that worktree before it registers plugin hooks. The plugin
+cannot label it at this version. Renaming it at `SessionStart` was also exercised and rejected: it
+stales Claude's recorded cwd and aborts startup. Root startup worktrees therefore retain Claude's
+native name rather than being changed through an unsupported path.
+
 Claude Code reports `source: "fork"` for native session forks but does not expose the source session
 ID to hooks. The plugin therefore defers fork allocation rather than inventing a root or inferring
 immutable parentage from mutable or undocumented state.
@@ -101,7 +135,7 @@ claude --plugin-dir ./integrations/claude-code
 ```
 
 Use `/plugin` to confirm `zettelkasten-hierarchy` is enabled and `/hooks` to inspect its
-`SessionStart`, `UserPromptSubmit`, and `SubagentStart` hooks. `UserPromptSubmit` performs only the
+`WorktreeCreate`, `SessionStart`, `UserPromptSubmit`, and `SubagentStart` hooks. `UserPromptSubmit` performs only the
 one-shot canonical retitle after `/clear` and otherwise returns no output.
 
 ## Failure behavior

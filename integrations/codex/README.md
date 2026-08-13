@@ -84,3 +84,16 @@ valid hook JSON before Codex's 20-second host timeout. A process crash, forced k
 can still fail open in Codex 0.147.0. Launcher recovery is exactly-once only after a known native ID:
 a crash or lost `thread/start` result can leave an unassigned native root because Codex provides no
 idempotency key for native root creation.
+
+## Codex desktop worktrees
+
+Codex desktop can create managed and permanent worktrees under its configured worktree root,
+associate a managed worktree with a chat, hand the chat between local and worktree checkouts, save
+snapshots before cleanup, and restore deleted managed worktrees. Those are desktop-owned features.
+
+The pinned Codex CLI/app-server 0.147.0 schema and live protocol expose a thread's stable opaque ID
+and cwd but no worktree create, association, move, handoff, restore, or remove operation or event.
+The plugin therefore cannot safely choose or change a desktop-managed worktree directory name.
+Renaming after `SessionStart` would stale the app's recorded cwd and destabilize the active thread;
+inferring association from cwd would violate the identity contract. Codex worktrees remain native
+and unchanged until a supported pre-creation naming API exists.

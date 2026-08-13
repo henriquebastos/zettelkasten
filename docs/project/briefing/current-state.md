@@ -24,6 +24,15 @@ native user configuration so the namespace ID can be shared explicitly across ha
 capability remains in Claude's local credential store. Native forks currently defer allocation
 because Claude's supported hooks do not expose the source session ID needed for immutable parentage.
 
+After plugin initialization, Claude's blocking `WorktreeCreate` hook creates managed Git worktrees
+under the main checkout's `.claude/worktrees` with `<address>-<native-description>` directory
+labels. It preserves the pinned CLI's branch, origin-main-with-local-HEAD-fallback, and
+`.worktreeinclude` projections.
+The label is stale-safe display metadata and is never used as identity. Isolated subagent creation
+exposes only the root session ID at that point, so its worktree displays the root session address
+rather than inventing an unavailable child identity. Root CLI `--worktree` creation happens before
+installed or inline plugin hooks are registered and remains unlabeled by this plugin.
+
 Codex roots, resumes, forks, and nested subagents use stable native IDs. The plugin reads exact
 native parent and fork provenance through app-server, recursively creates missing ancestors
 parent-first, and sets native thread names only after remote lineage validation. Its launcher
@@ -34,6 +43,11 @@ user-local with a separate user-only capability file and can share the same name
 Claude. Codex 0.147.0 cannot isolate that file from model shell tools running as the same OS user, so
 a dedicated least-privilege namespace is preferable for untrusted Codex workloads. Ariad 0.2.1 is
 vendored as the project's delivery method and the key project documents are adopted.
+
+Codex desktop can create app-managed worktrees, but Codex CLI/app-server 0.147.0 exposes no
+creation, association, move, restore, or removal operation to plugins. The integration therefore
+does not rename app-owned paths. Amp and Pi likewise expose stable thread/session IDs and cwd but no
+native worktree lifecycle; externally supplied worktrees remain outside hierarchy identity.
 
 Handled Codex root allocation failures are fail-closed before model work; a hook process crash,
 forced kill, or host timeout remains a Codex fail-open boundary. Codex 0.147.0 treats `SubagentStart` as an

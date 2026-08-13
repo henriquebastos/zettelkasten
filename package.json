@@ -19,7 +19,7 @@
     "amp:test": "bun test integrations/amp/*.test.ts",
     "amp:build": "bun build integrations/amp/index.ts --outdir /tmp/zettelkasten-amp-build --external @ampcode/plugin",
     "claude:check": "bun run claude:typecheck && bun run claude:test",
-    "claude:typecheck": "node_modules/node/bin/node node_modules/typescript/bin/tsc --noEmit --strict --target ES2023 --module NodeNext --moduleResolution NodeNext --types node --allowImportingTsExtensions --erasableSyntaxOnly integrations/claude-code/index.ts integrations/claude-code/launcher.ts",
+    "claude:typecheck": "node_modules/node/bin/node node_modules/typescript/bin/tsc --noEmit --strict --target ES2023 --module NodeNext --moduleResolution NodeNext --types node --allowImportingTsExtensions --erasableSyntaxOnly integrations/claude-code/index.ts integrations/claude-code/launcher.ts integrations/claude-code/worktree.ts",
     "claude:test": "bun test integrations/claude-code/*.test.ts",
     "codex:check": "bun run codex:typecheck && bun run codex:test",
     "codex:typecheck": "node_modules/node/bin/node node_modules/typescript/bin/tsc --noEmit --strict --target ES2023 --module NodeNext --moduleResolution NodeNext --types node --allowImportingTsExtensions --erasableSyntaxOnly integrations/codex/index.ts integrations/codex/configure.ts integrations/codex/launcher.ts integrations/codex/deferred-name.ts",

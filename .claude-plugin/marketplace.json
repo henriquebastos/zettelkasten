@@ -10,7 +10,7 @@
     {
       "name": "zettelkasten-hierarchy",
       "source": "./integrations/claude-code",
-      "description": "Canonical Zettelkasten addresses for Claude Code sessions, background sessions, and subagents",
+      "description": "Canonical Zettelkasten addresses for Claude Code sessions, worktrees, background sessions, and subagents",
       "category": "productivity",
       "homepage": "https://github.com/henriquebastos/zettelkasten/tree/main/integrations/claude-code",
       "repository": "https://github.com/henriquebastos/zettelkasten",

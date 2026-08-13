@@ -1,6 +1,19 @@
 {
   "description": "Allocate and display canonical Zettelkasten addresses",
   "hooks": {
+    "WorktreeCreate": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/worktree.ts"],
+            "timeout": 30,
+            "statusMessage": "Creating addressed Claude worktree"
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [

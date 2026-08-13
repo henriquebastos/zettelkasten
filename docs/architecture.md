@@ -15,3 +15,9 @@ Activation permanently switches to normal allocation; disablement is terminal in
 is concurrent, monotonic, and idempotent. Integrations obtain stable native IDs from their harness,
 send URI-style opaque keys, and add the returned address to harness title/metadata display without
 making that display the source of truth.
+
+Worktree directory labels are another display projection, not stored hierarchy. Where a harness
+provides a blocking pre-creation event with the stable session ID, the integration may create a
+managed worktree named `<address>-<native-description>`. The slug is a one-time cleanup hint and may
+drift from later session titles. Harnesses without that boundary are left unchanged rather than
+being inferred from cwd or reverse-engineered frontend state.
