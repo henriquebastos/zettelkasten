@@ -1,6 +1,5 @@
 import { spawn } from 'node:child_process'
 import { resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 
 import {
 	CodexAppServer,
@@ -13,6 +12,7 @@ import {
 	storeLauncherParent,
 	type Configuration,
 	type NativeThreads,
+	invokedDirectly,
 } from './index.ts'
 
 interface LauncherDependencies {
@@ -80,5 +80,4 @@ async function run(): Promise<void> {
 	catch (error) { process.stderr.write(`${error instanceof Error ? error.message : 'Codex child launch failed safely.'}\n`); process.exitCode = 1 }
 }
 
-const invokedPath = process.argv[1] ? resolve(process.argv[1]) : undefined
-if (invokedPath === fileURLToPath(import.meta.url)) await run()
+if (invokedDirectly(import.meta.url)) await run()

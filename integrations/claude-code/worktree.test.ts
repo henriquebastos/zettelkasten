@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
@@ -22,7 +22,8 @@ function git(cwd: string, ...args: string[]): string {
 }
 
 async function repository(): Promise<string> {
-	const root = await mkdtemp(resolve(tmpdir(), 'zettelkasten-claude-worktree-'))
+	// Git reports the canonical path, while macOS `mkdtemp` hands back a `/var` symlink of it.
+	const root = await realpath(await mkdtemp(resolve(tmpdir(), 'zettelkasten-claude-worktree-')))
 	git(root, 'init', '-q')
 	git(root, 'config', 'user.email', 'probe@example.invalid')
 	git(root, 'config', 'user.name', 'Probe')

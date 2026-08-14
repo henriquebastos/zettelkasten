@@ -1,7 +1,24 @@
 import { lstat, open, readFile } from 'node:fs/promises'
-import { constants } from 'node:fs'
+import { constants, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { isAbsolute, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+/**
+ * True when this module is the process entry point. Node resolves symlinks for `import.meta.url`
+ * while `argv[1]` keeps the caller's lexical path, so an installation reached through a symlink
+ * makes a lexical comparison disagree and silently skip the entry point. Both sides are resolved to
+ * real paths so that installation shape cannot decide whether it runs.
+ */
+export function invokedDirectly(moduleURL: string): boolean {
+	const invoked = process.argv[1]
+	if (!invoked) return false
+	try {
+		return realpathSync(resolve(invoked)) === realpathSync(fileURLToPath(moduleURL))
+	} catch {
+		return false
+	}
+}
 
 export type Address = Array<number | string>
 

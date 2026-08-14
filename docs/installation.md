@@ -206,7 +206,7 @@ claude plugin uninstall zettelkasten-hierarchy@zettelkasten
 ```
 
 Marketplace installation copies the plugin into Claude's local cache. Do not edit that cache;
-update the marketplace instead. Plugin version `0.5.0` is pinned by its manifest, so published
+update the marketplace instead. Plugin version `0.5.1` is pinned by its manifest, so published
 changes must increment that version before existing installations can update.
 
 ### Develop from a checkout

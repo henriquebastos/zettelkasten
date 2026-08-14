@@ -3,7 +3,24 @@ import { chmod, lstat, mkdir, readFile, rename, writeFile } from 'node:fs/promis
 import { randomUUID } from 'node:crypto'
 import { isAbsolute, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
+import { realpathSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+
+/**
+ * True when this module is the process entry point. Node resolves symlinks for `import.meta.url`
+ * while `argv[1]` keeps the caller's lexical path, so a plugin root reached through a symlink makes
+ * a lexical comparison disagree and silently skip the hook. Both sides are resolved to real paths
+ * so that installation shape cannot decide whether a hook runs.
+ */
+export function invokedDirectly(moduleURL: string): boolean {
+	const invoked = process.argv[1]
+	if (!invoked) return false
+	try {
+		return realpathSync(resolve(invoked)) === realpathSync(fileURLToPath(moduleURL))
+	} catch {
+		return false
+	}
+}
 
 export type Address = readonly [number, ...(number | string)[]]
 
@@ -479,5 +496,4 @@ async function run(): Promise<void> {
 	catch { process.stdout.write(JSON.stringify({ continue: false, stopReason: 'Codex supplied invalid hook input.' })) }
 }
 
-const invokedPath = process.argv[1] ? resolve(process.argv[1]) : undefined
-if (invokedPath === fileURLToPath(import.meta.url)) await run()
+if (invokedDirectly(import.meta.url)) await run()

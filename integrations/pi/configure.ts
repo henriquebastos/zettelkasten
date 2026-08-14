@@ -3,9 +3,8 @@ import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { stdin, stdout } from 'node:process'
-import { fileURLToPath } from 'node:url'
 
-import { configurationDirectory, HierarchyError, type RuntimeEnvironment } from './index.ts'
+import { configurationDirectory, HierarchyError, type RuntimeEnvironment, invokedDirectly } from './index.ts'
 
 export async function saveConfiguration(environment: RuntimeEnvironment, serviceURL: string, namespaceID: string, capability: string): Promise<void> {
 	const values = [serviceURL.trim(), namespaceID.trim(), capability.trim()]
@@ -63,6 +62,6 @@ async function run(): Promise<void> {
 	} finally { readline.close() }
 }
 
-if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+if (invokedDirectly(import.meta.url)) {
 	try { await run() } catch (error) { process.stderr.write(`${error instanceof Error ? error.message : 'Pi configuration failed.'}\n`); process.exitCode = 1 }
 }

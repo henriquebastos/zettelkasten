@@ -4,13 +4,13 @@ import { copyFile, lstat, mkdir, readFile, symlink } from 'node:fs/promises'
 import { homedir, platform } from 'node:os'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import { fileURLToPath } from 'node:url'
 
 import {
 	HierarchyAllocationError,
 	RemoteHierarchyAllocator,
 	hierarchyConfiguration,
 	type Address,
+	invokedDirectly,
 } from './index.ts'
 
 interface WorktreeCreateInput {
@@ -294,5 +294,4 @@ async function run(): Promise<void> {
 	}
 }
 
-const invokedPath = process.argv[1] ? resolve(process.argv[1]) : undefined
-if (invokedPath === fileURLToPath(import.meta.url)) await run()
+if (invokedDirectly(import.meta.url)) await run()

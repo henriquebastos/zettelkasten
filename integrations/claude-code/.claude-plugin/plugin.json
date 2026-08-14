@@ -1,7 +1,7 @@
 {
   "name": "zettelkasten-hierarchy",
   "description": "Service-backed Zettelkasten addresses for Claude Code sessions, worktrees, background sessions, and subagents",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "author": {
     "name": "Henrique Bastos",
     "url": "https://github.com/henriquebastos"

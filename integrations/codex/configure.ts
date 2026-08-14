@@ -4,9 +4,8 @@ import { chmod, lstat, mkdir, rename, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { stdin, stdout } from 'node:process'
-import { fileURLToPath } from 'node:url'
 
-import { HierarchyError, configurationDirectory } from './index.ts'
+import { HierarchyError, configurationDirectory, invokedDirectly } from './index.ts'
 
 export async function saveConfiguration(
 	environment: NodeJS.ProcessEnv,
@@ -72,7 +71,6 @@ async function run(): Promise<void> {
 	} finally { readline.close() }
 }
 
-const invokedPath = process.argv[1] ? resolve(process.argv[1]) : undefined
-if (invokedPath === fileURLToPath(import.meta.url)) {
+if (invokedDirectly(import.meta.url)) {
 	try { await run() } catch (error) { process.stderr.write(`${error instanceof Error ? error.message : 'Configuration failed safely.'}\n`); process.exitCode = 1 }
 }

@@ -8,6 +8,7 @@ import {
 	assignmentFileName,
 	displayCacheDirectory,
 	parseAddress,
+	invokedDirectly,
 } from './index.ts'
 
 interface LauncherEnvironment {
@@ -283,5 +284,4 @@ async function run(): Promise<void> {
 	}
 }
 
-const invokedPath = process.argv[1] ? resolve(process.argv[1]) : undefined
-if (invokedPath === fileURLToPath(import.meta.url)) await run()
+if (invokedDirectly(import.meta.url)) await run()
