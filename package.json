@@ -30,6 +30,7 @@
     "deploy": "node_modules/node/bin/node node_modules/wrangler/bin/wrangler.js deploy",
     "deploy:production": "node_modules/node/bin/node --experimental-strip-types scripts/deploy-production.ts",
     "deploy:production:dry-run": "node_modules/node/bin/node --experimental-strip-types scripts/deploy-production.ts --dry-run-only",
+    "namespace:create": "python3 scripts/create-namespace.py",
     "dev": "node_modules/node/bin/node node_modules/wrangler/bin/wrangler.js dev",
     "production:check": "bun run production:typecheck && bun run production:test",
     "production:test": "bun test scripts/*.test.ts",

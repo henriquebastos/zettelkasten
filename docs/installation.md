@@ -61,52 +61,35 @@ without credentials:
 curl --fail-with-body "$SERVICE_URL/health"
 ```
 
-Create the namespace with the service admin token in the `Authorization` header. Use a client or
-secret-manager workflow that does not put the token in argv or print the response. For example, this
-prompted script writes the response directly to a user-only file:
+Create and activate the namespace with the maintained provisioner. It supplies an explicit client
+identity because some Cloudflare security configurations reject Python's default `urllib` signature,
+and it writes the returned capability directly to a user-only file without printing it. The service
+admin token is read from a masked prompt and never enters argv:
 
 ```bash
-python3 - "$SERVICE_URL" <<'PY'
-import getpass, json, os, pathlib, sys, urllib.request
-
-request = urllib.request.Request(
-    sys.argv[1].rstrip('/') + '/v1/admin/namespaces',
-    data=json.dumps({'name': 'shared-coding-agents'}).encode(),
-    headers={
-        'Authorization': 'Bearer ' + getpass.getpass('Service admin token: '),
-        'Content-Type': 'application/json',
-    },
-    method='POST',
-)
-with urllib.request.urlopen(request) as response:
-    directory = pathlib.Path.home() / '.config' / 'zettelkasten'
-    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-    directory.chmod(0o700)
-    path = directory / 'namespace.private.json'
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(descriptor, 'wb') as output:
-        output.write(response.read())
-PY
+python3 scripts/create-namespace.py \
+  --service-url "$SERVICE_URL" \
+  --name shared-coding-agents
 ```
 
-The script refuses to overwrite an existing credential file. Keep
-`~/.config/zettelkasten/namespace.private.json` out of unapproved backups. Its shape is:
+The script refuses to overwrite an existing credential file. Keep the resulting
+`~/.config/zettelkasten/namespaces/shared-coding-agents.private.json` out of unapproved backups. Its
+shape is:
 
 ```json
 {
   "namespaceID": "ns_...",
   "name": "shared-coding-agents",
-  "state": "initializing",
+  "state": "active",
   "capabilityToken": "..."
 }
 ```
 
-Retain `namespaceID` as configuration and `capabilityToken` as a secret. While the namespace is
-`initializing`, an operator may import an existing hierarchy parent-first with
-`POST /v1/admin/namespaces/{namespaceID}/imports`. Then activate it with
-`POST /v1/admin/namespaces/{namespaceID}/activate`. Activation closes imports and enables normal
-allocation. All namespace lifecycle requests use the service admin token; harnesses receive only the
-namespace capability.
+Retain `namespaceID` as configuration and `capabilityToken` as a secret. The provisioner activates
+new empty namespaces immediately so they are ready for allocation. Operators migrating an existing
+hierarchy should instead use the administration API directly to create, import parent-first with
+`POST /v1/admin/namespaces/{namespaceID}/imports`, and then activate it. All namespace lifecycle
+requests use the service admin token; harnesses receive only the namespace capability.
 
 To add a custom domain, add your own Wrangler custom-domain route in a private or deployment-specific
 configuration after the `workers.dev` deployment works. The committed
