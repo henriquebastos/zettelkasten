@@ -122,8 +122,29 @@ which has no access to local plugin hooks or the required process environment.
 
 ### Install from GitHub
 
-For an installation available in every project, add this repository as a marketplace and install
-the plugin at user scope:
+From a trusted terminal in this repository checkout, the installer can recreate a private local
+namespace descriptor, validate its capability without allocating an element, install or update the
+marketplace plugin at user scope, and persist the non-secret service URL and namespace ID:
+
+```bash
+python3 scripts/install-claude-code.py
+```
+
+On its first run it prompts for the dedicated namespace ID and masks capability entry, then writes
+`~/.config/zettelkasten/namespaces/claude-code.private.json` with mode `0600`. The installer never
+passes the capability to Claude in argv or prints it. Claude Code 2.1.227 offers no secret-from-stdin
+configuration command, so complete the final sensitive field through Claude's masked native flow:
+
+```text
+/plugin configure zettelkasten-hierarchy@zettelkasten
+```
+
+Enter the namespace capability—not the service admin token—and restart Claude Code. This final
+interactive step lets Claude store the capability in Keychain or its private credential file. The
+script cannot safely automate that step through `plugin install --config`, because doing so would
+expose the capability in the child process argument list.
+
+Alternatively, install manually for an installation available in every project:
 
 ```bash
 claude plugin marketplace add https://github.com/henriquebastos/zettelkasten.git --scope user
@@ -142,13 +163,13 @@ across projects. Use `--scope local` or choose **Local** only when the plugin sh
 current checkout and user. Project scope writes shared Claude settings into the current repository;
 review and commit that configuration only when the whole project should require this marketplace.
 
-### Configure the shared namespace
+### Configure the namespace
 
 Claude prompts for three required plugin options when the plugin is enabled:
 
 - **Zettelkasten service URL** — defaults to `https://zettelkasten.henriquebastos.net`.
-- **Namespace ID** — enter the same existing namespace ID configured for Amp, Codex, and Pi when
-  those harnesses should share one hierarchy.
+- **Namespace ID** — enter a dedicated namespace ID for isolation, or the same existing namespace
+  ID configured for Amp, Codex, and Pi when those harnesses should share one hierarchy.
 - **Namespace capability** — enter the capability corresponding to that namespace. Claude masks
   this sensitive field and stores it in its credential store instead of user settings.
 
